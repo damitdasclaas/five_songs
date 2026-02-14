@@ -28,11 +28,16 @@ defmodule FiveSongsWeb.GameLive do
       |> assign(:reveal_data, nil)
       |> assign(:time_left_sec, nil)
       |> assign(:timer_ref, nil)
+      |> assign(:refresh_timer_ref, nil)
       |> then(&compute_phase/1)
 
-    if socket.assigns.phase == :choose_playlist and token do
-      send(self(), :load_playlists)
-    end
+    socket =
+      if socket.assigns.phase == :choose_playlist and token do
+        send(self(), :load_playlists)
+        schedule_token_refresh(socket)
+      else
+        socket
+      end
 
     {:ok, socket}
   end
@@ -59,6 +64,7 @@ defmodule FiveSongsWeb.GameLive do
         playlists={@playlists}
         playlists_error={@playlists_error}
         tracks_loading={@tracks_loading}
+        selected_playlist={@selected_playlist}
       />
       <.game_screen
         :if={@phase == :game}
@@ -93,10 +99,17 @@ defmodule FiveSongsWeb.GameLive do
       <a href={~p"/auth/logout"} class="absolute right-4 top-4 text-sm text-zinc-400 hover:text-white">Abmelden</a>
       <h1 class="text-2xl font-bold">Playlist wählen</h1>
       <p :if={@playlists_error} class="mt-2 max-w-md text-center text-red-400">{@playlists_error}</p>
-      <p :if={@playlists_error} class="mt-4 text-center text-sm text-zinc-400">
-        <a href={~p"/auth/spotify/reauth"} class="font-medium text-[#1DB954] underline hover:text-[#1ed760]">Erneut bei Spotify anmelden</a>
-        (holt einen neuen Token – nötig nach User Management / Scopes).
-      </p>
+      <div :if={@playlists_error} class="mt-3 flex flex-wrap items-center justify-center gap-3 text-sm">
+        <button
+          phx-click="retry"
+          class="rounded-lg bg-zinc-700 px-4 py-2 text-white hover:bg-zinc-600"
+        >
+          Nochmal versuchen
+        </button>
+        <a href={~p"/auth/spotify/reauth"} class="font-medium text-[#1DB954] underline hover:text-[#1ed760]">
+          Erneut bei Spotify anmelden
+        </a>
+      </div>
       <div :if={@tracks_loading} class="mt-4 text-zinc-400">Lade Tracks…</div>
       <ul :if={@playlists && !@tracks_loading} class="mt-6 w-full max-w-md space-y-2">
         <li :for={playlist <- @playlists}>
@@ -167,10 +180,11 @@ defmodule FiveSongsWeb.GameLive do
     with {:ok, me} <- Exspotify.Users.get_current_user_profile(token),
          {:ok, paging} <- Exspotify.Playlists.get_current_users_playlists(token, limit: 50) do
       all = paging.items || []
-      # Nur eigene Playlists anzeigen – gefolgte Playlists liefern oft 403 bei get_playlist_items
       playlists = Enum.filter(all, fn p -> p.owner && p.owner.id == me.id end)
       {:noreply, socket |> assign(:playlists, playlists) |> assign(:playlists_error, nil)}
     else
+      {:error, %Exspotify.Error{type: :unauthorized}} ->
+        {:noreply, redirect(socket, to: ~p"/auth/spotify/refresh")}
       _ ->
         {:noreply,
          assign(socket, :playlists_error, "Playlists konnten nicht geladen werden.")}
@@ -180,11 +194,10 @@ defmodule FiveSongsWeb.GameLive do
   def handle_info({:load_playlist_tracks, playlist_id}, socket) do
     token = socket.assigns.spotify_token
 
-    case Exspotify.Playlists.get_playlist_items(playlist_id, token, limit: 50) do
-      {:ok, paging} ->
-        items = paging.items || []
+    case fetch_all_playlist_items(playlist_id, token) do
+      {:ok, all_items} ->
         tracks =
-          items
+          all_items
           |> Enum.map(&(Map.get(&1, "track") || Map.get(&1, :track)))
           |> Enum.reject(&is_nil/1)
           |> Enum.filter(&(is_struct(&1, Exspotify.Structs.Track)))
@@ -195,7 +208,11 @@ defmodule FiveSongsWeb.GameLive do
          |> assign(:valid_tracks, tracks)
          |> assign(:playlists_error, nil)
          |> assign(:tracks_loading, false)
+         |> cancel_refresh_timer()
          |> compute_phase()}
+
+      {:error, %Exspotify.Error{type: :unauthorized}} ->
+        {:noreply, redirect(socket, to: ~p"/auth/spotify/refresh")}
 
       {:error, reason} ->
         require Logger
@@ -233,14 +250,34 @@ defmodule FiveSongsWeb.GameLive do
     end
   end
 
+  def handle_info(:refresh_token_redirect, socket) do
+    if socket.assigns[:spotify_refresh_token] do
+      {:noreply, redirect(socket, to: ~p"/auth/spotify/refresh")}
+    else
+      {:noreply, socket}
+    end
+  end
+
   @impl true
   def handle_event("select_playlist", %{"id" => id, "name" => name}, socket) do
     socket =
       socket
       |> assign(:tracks_loading, true)
+      |> assign(:playlists_error, nil)
       |> assign(:selected_playlist, %{id: id, name: name})
 
     send(self(), {:load_playlist_tracks, id})
+    {:noreply, socket}
+  end
+
+  def handle_event("retry", _params, socket) do
+    socket = assign(socket, :playlists_error, nil)
+    if socket.assigns.selected_playlist do
+      socket = assign(socket, :tracks_loading, true)
+      send(self(), {:load_playlist_tracks, socket.assigns.selected_playlist.id})
+    else
+      send(self(), :load_playlists)
+    end
     {:noreply, socket}
   end
 
@@ -297,5 +334,44 @@ defmodule FiveSongsWeb.GameLive do
       Process.cancel_timer(ref)
     end
     assign(socket, :timer_ref, nil)
+  end
+
+  # Token läuft nach ~1h ab; nach 45 min zur Refresh-Route schicken (nur auf Playlist-Bildschirm)
+  defp schedule_token_refresh(socket) do
+    if ref = socket.assigns[:refresh_timer_ref] do
+      Process.cancel_timer(ref)
+    end
+    ref = Process.send_after(self(), :refresh_token_redirect, 45 * 60 * 1000)
+    assign(socket, :refresh_timer_ref, ref)
+  end
+
+  defp cancel_refresh_timer(socket) do
+    if ref = socket.assigns[:refresh_timer_ref] do
+      Process.cancel_timer(ref)
+    end
+    assign(socket, :refresh_timer_ref, nil)
+  end
+
+  # Lädt alle Tracks einer Playlist (Pagination, max 500)
+  defp fetch_all_playlist_items(playlist_id, token, max_items \\ 500) do
+    limit = 50
+    do_fetch_playlist_items(playlist_id, token, 0, limit, max_items, [])
+  end
+
+  defp do_fetch_playlist_items(playlist_id, token, offset, limit, max_items, acc) do
+    case Exspotify.Playlists.get_playlist_items(playlist_id, token, limit: limit, offset: offset) do
+      {:ok, paging} ->
+        items = paging.items || []
+        total = paging.total || 0
+        acc = acc ++ items
+        next_offset = offset + limit
+        if next_offset >= total or next_offset >= max_items or items == [] do
+          {:ok, acc}
+        else
+          do_fetch_playlist_items(playlist_id, token, next_offset, limit, max_items, acc)
+        end
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 end
