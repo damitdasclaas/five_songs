@@ -1,11 +1,8 @@
 defmodule FiveSongsWeb.GameLive do
   use FiveSongsWeb, :live_view
 
+  @play_duration_options [30, 45, 60, 75, 90]
   @default_play_duration_sec 60
-
-  defp play_duration_sec do
-    Application.get_env(:five_songs, :play_duration_sec, @default_play_duration_sec)
-  end
 
   @impl true
   def mount(_params, session, socket) do
@@ -17,6 +14,7 @@ defmodule FiveSongsWeb.GameLive do
       |> assign(:spotify_token, token)
       |> assign(:spotify_refresh_token, refresh_token)
       |> assign(:playlists, nil)
+      |> assign(:playlists_loading, false)
       |> assign(:playlists_error, nil)
       |> assign(:selected_playlist, nil)
       |> assign(:valid_tracks, [])
@@ -29,11 +27,15 @@ defmodule FiveSongsWeb.GameLive do
       |> assign(:time_left_sec, nil)
       |> assign(:timer_ref, nil)
       |> assign(:refresh_timer_ref, nil)
+      |> assign(:play_duration_sec, Application.get_env(:five_songs, :play_duration_sec, @default_play_duration_sec))
+      |> assign(:play_duration_options, @play_duration_options)
+      |> assign(:countdown_sec, nil)
+      |> assign(:show_reveal, false)
+      |> assign(:playback_started_timeout_ref, nil)
       |> then(&compute_phase/1)
 
     socket =
       if socket.assigns.phase == :choose_playlist and token do
-        send(self(), :load_playlists)
         schedule_token_refresh(socket)
       else
         socket
@@ -56,12 +58,13 @@ defmodule FiveSongsWeb.GameLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div id="game-root" class="min-h-screen bg-zinc-900 text-white" phx-hook="SpotifyPlayer">
+    <div id="game-root" class="min-h-screen bg-zinc-900 text-white" phx-hook="SpotifyPlayer" data-phase={@phase}>
       <.flash_group flash={@flash} />
       <.login_screen :if={@phase == :login} />
       <.playlist_screen
         :if={@phase == :choose_playlist}
         playlists={@playlists}
+        playlists_loading={@playlists_loading}
         playlists_error={@playlists_error}
         tracks_loading={@tracks_loading}
         selected_playlist={@selected_playlist}
@@ -71,8 +74,12 @@ defmodule FiveSongsWeb.GameLive do
         game_phase={@game_phase}
         current_category={@current_category}
         reveal_data={@reveal_data}
+        show_reveal={@show_reveal}
         time_left_sec={@time_left_sec}
         valid_tracks_count={length(@valid_tracks)}
+        countdown_sec={@countdown_sec}
+        play_duration_sec={@play_duration_sec}
+        play_duration_options={@play_duration_options}
       />
     </div>
     """
@@ -97,11 +104,33 @@ defmodule FiveSongsWeb.GameLive do
     ~H"""
     <div class="flex min-h-screen flex-col items-center justify-center px-4">
       <a href={~p"/auth/logout"} class="absolute right-4 top-4 text-sm text-zinc-400 hover:text-white">Abmelden</a>
-      <h1 class="text-2xl font-bold">Playlist wählen</h1>
+      <div class="flex items-center gap-2">
+        <h1 class="text-2xl font-bold">Playlist wählen</h1>
+        <button
+          :if={@playlists != nil}
+          phx-click="load_playlists"
+          disabled={@playlists_loading}
+          class="rounded p-1.5 text-zinc-400 hover:bg-zinc-700 hover:text-white disabled:opacity-50"
+          title="Playlists aktualisieren"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+        </button>
+      </div>
+      <div :if={@playlists == nil && !@playlists_error && !@playlists_loading} class="mt-6">
+        <button
+          phx-click="load_playlists"
+          class="rounded-lg bg-[#1DB954] px-6 py-3 font-semibold text-white hover:bg-[#1ed760]"
+        >
+          Playlists laden
+        </button>
+      </div>
+      <div :if={@playlists_loading} class="mt-6 text-zinc-400">Lade Playlists…</div>
       <p :if={@playlists_error} class="mt-2 max-w-md text-center text-red-400">{@playlists_error}</p>
       <div :if={@playlists_error} class="mt-3 flex flex-wrap items-center justify-center gap-3 text-sm">
         <button
-          phx-click="retry"
+          phx-click="load_playlists"
           class="rounded-lg bg-zinc-700 px-4 py-2 text-white hover:bg-zinc-600"
         >
           Nochmal versuchen
@@ -111,7 +140,7 @@ defmodule FiveSongsWeb.GameLive do
         </a>
       </div>
       <div :if={@tracks_loading} class="mt-4 text-zinc-400">Lade Tracks…</div>
-      <ul :if={@playlists && !@tracks_loading} class="mt-6 w-full max-w-md space-y-2">
+      <ul :if={@playlists && !@playlists_loading && !@tracks_loading} class="mt-6 w-full max-w-md space-y-2">
         <li :for={playlist <- @playlists}>
           <button
             phx-click="select_playlist"
@@ -123,7 +152,7 @@ defmodule FiveSongsWeb.GameLive do
           </button>
         </li>
       </ul>
-      <p :if={@playlists == [] && !@playlists_error} class="mt-4 text-zinc-400">
+      <p :if={@playlists == [] && !@playlists_error && !@playlists_loading} class="mt-4 text-zinc-400">
         Keine Playlists gefunden.
       </p>
     </div>
@@ -133,7 +162,22 @@ defmodule FiveSongsWeb.GameLive do
   defp game_screen(assigns) do
     ~H"""
     <div class="flex min-h-screen flex-col">
-      <a href={~p"/auth/logout"} class="absolute right-4 top-4 z-10 text-sm text-zinc-400 hover:text-white">Abmelden</a>
+      <div class="absolute left-4 right-4 top-4 z-10 flex justify-between">
+        <button
+          phx-click="back_to_playlists"
+          type="button"
+          class="text-sm text-zinc-400 hover:text-white"
+        >
+          ← Zurück
+        </button>
+        <a href={~p"/auth/logout"} class="text-sm text-zinc-400 hover:text-white">Abmelden</a>
+      </div>
+      <div
+        :if={@game_phase == :countdown && @countdown_sec != nil}
+        class="flex flex-1 flex-col items-center justify-center bg-zinc-800"
+      >
+        <p class="text-8xl font-bold tabular-nums text-white">{@countdown_sec}</p>
+      </div>
       <div
         :if={@game_phase == :playing && @current_category}
         class="flex flex-1 flex-col items-center justify-center transition-colors"
@@ -145,14 +189,39 @@ defmodule FiveSongsWeb.GameLive do
         </p>
       </div>
       <div
-        :if={@game_phase == :reveal && @reveal_data}
+        :if={@game_phase == :reveal && @reveal_data && !@show_reveal}
+        class="flex flex-1 flex-col items-center justify-center bg-zinc-800 px-4"
+      >
+        <p class="text-center text-zinc-400">Runde vorbei.</p>
+        <button
+          phx-click="show_reveal"
+          class="mt-6 rounded-lg bg-[#1DB954] px-8 py-3 font-semibold text-white hover:bg-[#1ed760]"
+        >
+          Ergebnis anzeigen
+        </button>
+      </div>
+      <div
+        :if={@game_phase == :reveal && @reveal_data && @show_reveal}
         class="flex flex-1 flex-col items-center justify-center bg-zinc-800 px-4"
       >
         <p class="text-4xl font-bold text-white">{@reveal_data.year}</p>
         <p class="mt-4 text-2xl font-semibold">{@reveal_data.title}</p>
         <p class="mt-2 text-xl text-zinc-400">{@reveal_data.artist}</p>
       </div>
-      <div class="border-t border-zinc-700 p-4">
+      <div class="border-t border-zinc-700 p-4 space-y-3">
+        <div :if={@game_phase == :idle || @game_phase == :reveal} class="flex items-center justify-between gap-2">
+          <span class="text-sm text-zinc-400">Spieldauer:</span>
+          <div class="flex gap-1">
+            <button
+              :for={sec <- @play_duration_options}
+              phx-click="set_play_duration"
+              phx-value-sec={sec}
+              class={"rounded px-3 py-1.5 text-sm font-medium transition #{if sec == @play_duration_sec, do: "bg-[#1DB954] text-white", else: "bg-zinc-700 text-zinc-300 hover:bg-zinc-600"}"}
+            >
+              {sec}s
+            </button>
+          </div>
+        </div>
         <button
           :if={@game_phase == :idle || @game_phase == :reveal}
           phx-click="next_song"
@@ -177,18 +246,29 @@ defmodule FiveSongsWeb.GameLive do
   def handle_info(:load_playlists, socket) do
     token = socket.assigns.spotify_token
 
-    with {:ok, me} <- Exspotify.Users.get_current_user_profile(token),
-         {:ok, paging} <- Exspotify.Playlists.get_current_users_playlists(token, limit: 50) do
-      all = paging.items || []
-      playlists = Enum.filter(all, fn p -> p.owner && p.owner.id == me.id end)
-      {:noreply, socket |> assign(:playlists, playlists) |> assign(:playlists_error, nil)}
-    else
-      {:error, %Exspotify.Error{type: :unauthorized}} ->
-        {:noreply, redirect(socket, to: ~p"/auth/spotify/refresh")}
-      _ ->
+    result =
+      with {:ok, me} <- Exspotify.Users.get_current_user_profile(token),
+           {:ok, paging} <- Exspotify.Playlists.get_current_users_playlists(token, limit: 50) do
+        all = paging.items || []
+        playlists = Enum.filter(all, fn p -> p.owner && p.owner.id == me.id end)
+        cache = Enum.map(playlists, fn p -> %{"id" => p.id, "name" => p.name} end)
         {:noreply,
-         assign(socket, :playlists_error, "Playlists konnten nicht geladen werden.")}
-    end
+         socket
+         |> assign(:playlists, playlists)
+         |> assign(:playlists_loading, false)
+         |> assign(:playlists_error, nil)
+         |> push_event("cache_playlists", %{playlists: cache})}
+      else
+        {:error, %Exspotify.Error{type: :unauthorized}} ->
+          {:noreply, redirect(socket, to: ~p"/auth/spotify/refresh")}
+        _ ->
+          {:noreply,
+           socket
+           |> assign(:playlists_loading, false)
+           |> assign(:playlists_error, "Playlists konnten nicht geladen werden.")}
+      end
+
+    result
   end
 
   def handle_info({:load_playlist_tracks, playlist_id}, socket) do
@@ -225,13 +305,14 @@ defmodule FiveSongsWeb.GameLive do
   end
 
   def handle_info(:time_up, socket) do
-    socket = cancel_timer(socket)
+    socket = socket |> cancel_timer() |> cancel_playback_started_timeout()
     reveal_data = socket.assigns.current_track && FiveSongs.Tracks.reveal_data(socket.assigns.current_track)
 
     {:noreply,
      socket
      |> assign(:game_phase, :reveal)
      |> assign(:reveal_data, reveal_data)
+     |> assign(:show_reveal, false)
      |> assign(:time_left_sec, nil)
      |> assign(:timer_ref, nil)
      |> push_event("pause_track", %{})}
@@ -258,6 +339,37 @@ defmodule FiveSongsWeb.GameLive do
     end
   end
 
+  def handle_info(:playback_started_timeout, socket) do
+    socket = cancel_playback_started_timeout(socket)
+    if socket.assigns.game_phase == :playing and is_nil(socket.assigns.timer_ref) do
+      {:noreply, start_play_timer(socket)}
+    else
+      {:noreply, assign(socket, :playback_started_timeout_ref, nil)}
+    end
+  end
+
+  def handle_info(:countdown_tick, socket) do
+    case socket.assigns.countdown_sec do
+      n when is_integer(n) and n > 1 ->
+        socket = assign(socket, :countdown_sec, n - 1)
+        Process.send_after(self(), :countdown_tick, 1000)
+        {:noreply, socket}
+      1 ->
+        duration = socket.assigns.play_duration_sec
+        ref = Process.send_after(self(), :playback_started_timeout, 10_000)
+        socket =
+          socket
+          |> assign(:game_phase, :playing)
+          |> assign(:countdown_sec, nil)
+          |> assign(:time_left_sec, duration)
+          |> assign(:playback_started_timeout_ref, ref)
+
+        {:noreply, push_event(socket, "play_track", %{uri: socket.assigns.current_track.uri, token: socket.assigns.spotify_token})}
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
   @impl true
   def handle_event("select_playlist", %{"id" => id, "name" => name}, socket) do
     socket =
@@ -268,6 +380,25 @@ defmodule FiveSongsWeb.GameLive do
 
     send(self(), {:load_playlist_tracks, id})
     {:noreply, socket}
+  end
+
+  def handle_event("load_playlists", _params, socket) do
+    socket =
+      socket
+      |> assign(:playlists_error, nil)
+      |> assign(:playlists_loading, true)
+
+    send(self(), :load_playlists)
+    {:noreply, socket}
+  end
+
+  def handle_event("restore_playlists", %{"playlists" => list}, socket) do
+    if socket.assigns.phase == :choose_playlist and is_list(list) and list != [] do
+      playlists = Enum.map(list, fn p -> %{id: p["id"], name: p["name"]} end)
+      {:noreply, assign(socket, :playlists, playlists)}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("retry", _params, socket) do
@@ -286,37 +417,83 @@ defmodule FiveSongsWeb.GameLive do
     if valid_tracks == [] do
       {:noreply, socket}
     else
+      track = FiveSongs.Tracks.pick_random_track(valid_tracks)
+      category = FiveSongs.Categories.pick_random()
+      socket =
+        socket
+        |> assign(:current_track, track)
+        |> assign(:current_category, category)
+        |> assign(:reveal_data, nil)
+        |> assign(:show_reveal, false)
+        |> assign(:game_phase, :countdown)
+        |> assign(:countdown_sec, 3)
+        |> assign(:time_left_sec, nil)
 
-    track = FiveSongs.Tracks.pick_random_track(valid_tracks)
-    category = FiveSongs.Categories.pick_random()
-
-    socket =
-      socket
-      |> assign(:current_track, track)
-      |> assign(:current_category, category)
-      |> assign(:reveal_data, nil)
-      |> assign(:game_phase, :playing)
-      |> assign(:time_left_sec, play_duration_sec())
-      |> then(&start_play_timer/1)
-
-    {:noreply, push_event(socket, "play_track", %{uri: track.uri, token: socket.assigns.spotify_token})}
+      Process.send_after(self(), :countdown_tick, 1000)
+      {:noreply, socket}
     end
   end
 
+  def handle_event("set_play_duration", %{"sec" => sec}, socket) do
+    sec = String.to_integer(sec)
+    sec = if sec in @play_duration_options, do: sec, else: @default_play_duration_sec
+    {:noreply, assign(socket, :play_duration_sec, sec)}
+  end
+
   def handle_event("stop_round", _params, socket) do
-    socket = cancel_timer(socket)
+    socket = socket |> cancel_timer() |> cancel_playback_started_timeout()
     reveal_data = socket.assigns.current_track && FiveSongs.Tracks.reveal_data(socket.assigns.current_track)
 
     {:noreply,
      socket
      |> assign(:game_phase, :reveal)
      |> assign(:reveal_data, reveal_data)
+     |> assign(:show_reveal, false)
      |> assign(:time_left_sec, nil)
      |> push_event("pause_track", %{})}
   end
 
+  def handle_event("show_reveal", _params, socket) do
+    {:noreply, assign(socket, :show_reveal, true)}
+  end
+
+  def handle_event("back_to_playlists", _params, socket) do
+    socket =
+      socket
+      |> cancel_timer()
+      |> cancel_playback_started_timeout()
+      |> cancel_refresh_timer()
+      |> assign(:selected_playlist, nil)
+      |> assign(:valid_tracks, [])
+      |> assign(:tracks_loading, false)
+      |> assign(:game_phase, :idle)
+      |> assign(:current_track, nil)
+      |> assign(:current_category, nil)
+      |> assign(:reveal_data, nil)
+      |> assign(:show_reveal, false)
+      |> assign(:time_left_sec, nil)
+      |> assign(:timer_ref, nil)
+      |> assign(:countdown_sec, nil)
+      |> compute_phase()
+      |> schedule_token_refresh()
+      |> push_event("pause_track", %{})
+
+    {:noreply, socket}
+  end
+
+  # Client meldet, dass Spotify wirklich abspielt → Timer starten (Sync mit Playback)
+  def handle_event("playback_started", _params, socket) do
+    if socket.assigns.game_phase == :playing and is_nil(socket.assigns.timer_ref) do
+      socket = cancel_playback_started_timeout(socket)
+      {:noreply, start_play_timer(socket)}
+    else
+      {:noreply, socket}
+    end
+  end
+
   defp start_play_timer(socket) do
-    ref = Process.send_after(self(), :time_up, play_duration_sec() * 1000)
+    duration_sec = socket.assigns.play_duration_sec
+    ref = Process.send_after(self(), :time_up, duration_sec * 1000)
     socket
     |> assign(:timer_ref, ref)
     |> schedule_tick()
@@ -336,6 +513,13 @@ defmodule FiveSongsWeb.GameLive do
     assign(socket, :timer_ref, nil)
   end
 
+  defp cancel_playback_started_timeout(socket) do
+    if ref = socket.assigns[:playback_started_timeout_ref] do
+      Process.cancel_timer(ref)
+    end
+    assign(socket, :playback_started_timeout_ref, nil)
+  end
+
   # Token läuft nach ~1h ab; nach 45 min zur Refresh-Route schicken (nur auf Playlist-Bildschirm)
   defp schedule_token_refresh(socket) do
     if ref = socket.assigns[:refresh_timer_ref] do
@@ -352,8 +536,9 @@ defmodule FiveSongsWeb.GameLive do
     assign(socket, :refresh_timer_ref, nil)
   end
 
-  # Lädt alle Tracks einer Playlist (Pagination, max 500)
-  defp fetch_all_playlist_items(playlist_id, token, max_items \\ 500) do
+  # Lädt alle Tracks einer Playlist (Pagination). max_items begrenzen spart Requests (Rate Limit).
+  # Siehe docs/SPOTIFY_RATE_LIMIT.md für alle API-Aufrufe.
+  defp fetch_all_playlist_items(playlist_id, token, max_items \\ 200) do
     limit = 50
     do_fetch_playlist_items(playlist_id, token, 0, limit, max_items, [])
   end
