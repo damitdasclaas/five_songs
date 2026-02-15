@@ -100,6 +100,15 @@ defmodule FiveSongsWeb.SettingsLive do
         </section>
 
         <section class="rounded-xl bg-zinc-800/60 p-4">
+          <h2 class="mb-1 text-sm font-semibold uppercase tracking-wide text-zinc-400">Playlists</h2>
+          <p class="text-sm text-zinc-500">
+            Du kannst nur <strong class="text-zinc-300">eigene Playlists</strong> spielen.
+            Um eine Playlist von jemand anderem zu nutzen, erstelle in Spotify eine neue Playlist
+            und kopiere die Songs dorthin (alle markieren → in deine Playlist ziehen).
+          </p>
+        </section>
+
+        <section class="rounded-xl bg-zinc-800/60 p-4">
           <h2 class="mb-1 text-sm font-semibold uppercase tracking-wide text-zinc-400">Spieldauer</h2>
           <p class="mb-3 text-sm text-zinc-500">Sekunden pro Song vor dem Raten.</p>
           <div class="flex flex-wrap gap-2">

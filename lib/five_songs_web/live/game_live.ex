@@ -259,14 +259,25 @@ defmodule FiveSongsWeb.GameLive do
       </div>
       <h1 class="text-2xl font-bold">{@selected_playlist.name}</h1>
       <div :if={@tracks_loading} class="mt-4 text-zinc-400">Lade Tracks…</div>
-      <p :if={@playlists_error} class="mt-2 max-w-md text-center text-red-400">{@playlists_error}</p>
+      <%!-- Forbidden: Kein Zugriff auf fremde Playlist --%>
+      <div :if={@playlists_error == :forbidden} class="mt-4 max-w-md space-y-3 text-center">
+        <p class="text-red-400">Kein Zugriff auf diese Playlist.</p>
+        <p class="text-sm text-zinc-500">
+          Du kannst nur <strong class="text-zinc-300">eigene Playlists</strong> spielen.
+          Um diese Playlist zu nutzen, erstelle in Spotify eine neue Playlist
+          und kopiere die Songs dorthin (alle markieren → in deine Playlist ziehen).
+        </p>
+      </div>
+      <%!-- Anderer Fehler --%>
+      <p :if={@playlists_error && @playlists_error != :forbidden} class="mt-2 max-w-md text-center text-red-400">{@playlists_error}</p>
+      <%!-- Erfolg: Track-Info --%>
       <div :if={!@tracks_loading && !@playlists_error && @total_count > 0} class="mt-4 text-center">
         <p class="text-lg text-zinc-300">{@total_count} Songs</p>
         <p :if={@year_range} class="text-zinc-500">{elem(@year_range, 0)}–{elem(@year_range, 1)}</p>
       </div>
       <div :if={!@tracks_loading} class="mt-8 flex flex-col gap-3">
         <button
-          :if={@total_count > 0}
+          :if={!@playlists_error && @total_count > 0}
           phx-click="start_playlist"
           class="rounded-full bg-[#1DB954] px-8 py-4 text-lg font-semibold text-white transition hover:bg-[#1ed760]"
         >
@@ -481,6 +492,12 @@ defmodule FiveSongsWeb.GameLive do
 
         {:error, %Exspotify.Error{type: :unauthorized}} ->
           {:noreply, redirect(socket, to: ~p"/auth/spotify/refresh")}
+
+        {:error, %Exspotify.Error{type: :forbidden}} ->
+          {:noreply,
+           socket
+           |> assign(:playlists_error, :forbidden)
+           |> assign(:tracks_loading, false)}
 
         {:error, %Exspotify.Error{type: :rate_limited, details: details}} ->
           {:noreply,
@@ -763,6 +780,7 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
       |> assign(:valid_tracks, [])
       |> assign(:played_track_ids, [])
       |> assign(:tracks_loading, false)
+      |> assign(:playlists_error, nil)
       |> assign(:game_started, false)
       |> assign(:year_range, nil)
       |> assign(:game_phase, :idle)
