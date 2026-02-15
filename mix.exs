@@ -34,8 +34,7 @@ defmodule FiveSongs.MixProject do
     [
       # Git: Supervisor deprecation fixed on master; Hex 3.0/3.1 still use old API
       {:dotenv, github: "avdi/dotenv_elixir", ref: "master", only: [:dev, :test]},
-      # Lokales Repo: kein Hex-Publish nötig, Docker-Build nutzt ebenfalls dieses Verzeichnis
-      {:exspotify, path: "../exspotify"},
+      {:exspotify, "~> 0.1.4"},
       {:phoenix, "~> 1.7.21"},
       {:phoenix_html, "~> 4.1"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
