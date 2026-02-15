@@ -231,18 +231,20 @@ defmodule FiveSongsWeb.GameLive do
           Erneut bei Spotify anmelden
         </a>
       </div>
-      <ul :if={@playlists && !@playlists_loading} class="mt-6 w-full max-w-md space-y-2">
-        <li :for={playlist <- @playlists}>
-          <button
-            phx-click="select_playlist"
-            phx-value-id={playlist.id}
-            phx-value-name={playlist.name}
-            class="w-full rounded-lg bg-zinc-800 px-4 py-3 text-left hover:bg-zinc-700"
-          >
-            {playlist.name}
-          </button>
-        </li>
-      </ul>
+      <div :if={@playlists && !@playlists_loading} class="mt-6 w-full max-w-md max-h-[60vh] overflow-y-auto rounded-xl border border-zinc-700">
+        <ul class="divide-y divide-zinc-700">
+          <li :for={playlist <- @playlists}>
+            <button
+              phx-click="select_playlist"
+              phx-value-id={playlist.id}
+              phx-value-name={playlist.name}
+              class="w-full px-4 py-3 text-left hover:bg-zinc-700/50"
+            >
+              {playlist.name}
+            </button>
+          </li>
+        </ul>
+      </div>
       <p :if={@playlists == [] && !@playlists_error && !@playlists_loading} class="mt-4 text-zinc-400">
         Keine Playlists gefunden.
       </p>
@@ -379,9 +381,24 @@ defmodule FiveSongsWeb.GameLive do
         :if={@game_phase == :reveal && @reveal_data && @show_reveal}
         class="flex flex-1 flex-col items-center justify-center bg-zinc-800 px-6"
       >
+        <img
+          :if={@reveal_data[:cover_url]}
+          src={@reveal_data.cover_url}
+          alt="Album Cover"
+          class="mb-4 h-40 w-40 rounded-lg shadow-lg"
+        />
         <p class="text-4xl font-bold text-white">{@reveal_data.year}</p>
         <p class="mt-4 text-2xl font-semibold">{@reveal_data.title}</p>
         <p class="mt-2 text-xl text-zinc-400">{@reveal_data.artist}</p>
+        <a
+          :if={@reveal_data[:spotify_url]}
+          href={@reveal_data.spotify_url}
+          target="_blank"
+          rel="noopener"
+          class="mt-4 text-sm text-[#1DB954] hover:text-[#1ed760]"
+        >
+          In Spotify öffnen ↗
+        </a>
         <button
           phx-click="next_round"
           class="mt-8 w-full max-w-xs rounded-lg bg-[#1DB954] py-3 font-semibold text-white hover:bg-[#1ed760] disabled:opacity-50"
