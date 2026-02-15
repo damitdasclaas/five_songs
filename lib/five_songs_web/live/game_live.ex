@@ -303,7 +303,7 @@ defmodule FiveSongsWeb.GameLive do
         <button phx-click="back_to_playlists" type="button" class="text-sm text-zinc-400 hover:text-white">
           ← Zurück
         </button>
-        <span class="text-xs tabular-nums text-zinc-500">{@played_count}/{@total_count} Songs</span>
+        <span class="rounded-full bg-zinc-800 px-3 py-1 text-sm tabular-nums text-zinc-300">{@played_count}/{@total_count}</span>
       </div>
       <%!-- Idle: Warten auf "Nächste Runde" --%>
       <div
@@ -381,15 +381,15 @@ defmodule FiveSongsWeb.GameLive do
         :if={@game_phase == :reveal && @reveal_data && @show_reveal}
         class="flex flex-1 flex-col items-center justify-center bg-zinc-800 px-6"
       >
+        <p class="text-5xl font-bold text-white">{@reveal_data.year}</p>
+        <p class="mt-4 text-2xl font-semibold">{@reveal_data.title}</p>
+        <p class="mt-1 text-xl text-zinc-400">{@reveal_data.artist}</p>
         <img
           :if={@reveal_data[:cover_url]}
           src={@reveal_data.cover_url}
           alt="Album Cover"
-          class="mb-4 h-40 w-40 rounded-lg shadow-lg"
+          class="mt-5 h-20 w-20 rounded shadow-md"
         />
-        <p class="text-4xl font-bold text-white">{@reveal_data.year}</p>
-        <p class="mt-4 text-2xl font-semibold">{@reveal_data.title}</p>
-        <p class="mt-2 text-xl text-zinc-400">{@reveal_data.artist}</p>
         <a
           :if={@reveal_data[:spotify_url]}
           href={@reveal_data.spotify_url}
