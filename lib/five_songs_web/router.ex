@@ -24,6 +24,7 @@ defmodule FiveSongsWeb.Router do
     get "/auth/logout", AuthController, :logout
     get "/settings/device", SettingsController, :set_device
     get "/settings/duration", SettingsController, :set_duration
+    get "/settings/refresh", SettingsController, :refresh_devices
 
     live "/", GameLive
     live "/settings", SettingsLive

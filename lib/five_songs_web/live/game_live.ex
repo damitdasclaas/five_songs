@@ -34,7 +34,6 @@ defmodule FiveSongsWeb.GameLive do
       |> assign(:timer_ref, nil)
       |> assign(:refresh_timer_ref, nil)
       |> assign(:play_duration_sec, play_duration_sec)
-      |> assign(:play_duration_options, @play_duration_options)
       |> assign(:countdown_sec, nil)
       |> assign(:show_reveal, false)
       |> assign(:playback_started_timeout_ref, nil)
@@ -85,7 +84,6 @@ defmodule FiveSongsWeb.GameLive do
         valid_tracks_count={length(@valid_tracks)}
         countdown_sec={@countdown_sec}
         play_duration_sec={@play_duration_sec}
-        play_duration_options={@play_duration_options}
       />
     </div>
     """
@@ -221,19 +219,6 @@ defmodule FiveSongsWeb.GameLive do
         <p class="mt-2 text-xl text-zinc-400">{@reveal_data.artist}</p>
       </div>
       <div class="border-t border-zinc-700 p-4 space-y-3">
-        <div :if={@game_phase == :idle || @game_phase == :reveal} class="flex items-center justify-between gap-2">
-          <span class="text-sm text-zinc-400">Spieldauer:</span>
-          <div class="flex gap-1">
-            <button
-              :for={sec <- @play_duration_options}
-              phx-click="set_play_duration"
-              phx-value-sec={sec}
-              class={"rounded px-3 py-1.5 text-sm font-medium transition #{if sec == @play_duration_sec, do: "bg-[#1DB954] text-white", else: "bg-zinc-700 text-zinc-300 hover:bg-zinc-600"}"}
-            >
-              {sec}s
-            </button>
-          </div>
-        </div>
         <button
           :if={@game_phase == :idle || @game_phase == :reveal}
           phx-click="next_song"
@@ -327,7 +312,7 @@ defmodule FiveSongsWeb.GameLive do
      |> assign(:show_reveal, false)
      |> assign(:time_left_sec, nil)
      |> assign(:timer_ref, nil)
-     |> push_event("pause_track", %{})}
+     |> push_event("pause_track", pause_payload(socket))}
   end
 
   def handle_info(:tick, socket) do
@@ -448,12 +433,6 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
     end
   end
 
-  def handle_event("set_play_duration", %{"sec" => sec}, socket) do
-    sec = String.to_integer(sec)
-    sec = if sec in @play_duration_options, do: sec, else: @default_play_duration_sec
-    {:noreply, assign(socket, :play_duration_sec, sec)}
-  end
-
   def handle_event("stop_round", _params, socket) do
     socket = socket |> cancel_timer() |> cancel_playback_started_timeout()
     reveal_data = socket.assigns.current_track && FiveSongs.Tracks.reveal_data(socket.assigns.current_track)
@@ -464,7 +443,7 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
      |> assign(:reveal_data, reveal_data)
      |> assign(:show_reveal, false)
      |> assign(:time_left_sec, nil)
-     |> push_event("pause_track", %{})}
+     |> push_event("pause_track", pause_payload(socket))}
   end
 
   def handle_event("show_reveal", _params, socket) do
@@ -490,7 +469,7 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
       |> assign(:countdown_sec, nil)
       |> compute_phase()
       |> schedule_token_refresh()
-      |> push_event("pause_track", %{})
+      |> push_event("pause_track", pause_payload(socket))
 
     {:noreply, socket}
   end
@@ -548,6 +527,11 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
       Process.cancel_timer(ref)
     end
     assign(socket, :refresh_timer_ref, nil)
+  end
+
+  defp pause_payload(socket) do
+    base = %{token: socket.assigns.spotify_token}
+    if id = socket.assigns[:spotify_device_id], do: Map.put(base, :device_id, id), else: base
   end
 
   # Lädt alle Tracks einer Playlist (Pagination). max_items begrenzen spart Requests (Rate Limit).

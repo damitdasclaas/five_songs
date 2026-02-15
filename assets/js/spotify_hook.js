@@ -7,6 +7,7 @@ const SpotifyPlayerHook = {
 
   mounted() {
     this.handleEvent("play_track", ({ uri, token, device_id }) => {
+      if (token) this.lastToken = token;
       this.pendingPlay = { uri, token, device_id };
       if (device_id) {
         this.playUri(uri, token, device_id);
@@ -15,7 +16,17 @@ const SpotifyPlayerHook = {
         this.ensurePlayerThenPlay(token);
       }
     });
-    this.handleEvent("pause_track", () => {
+    this.handleEvent("pause_track", (payload) => {
+      const token = payload?.token || this.lastToken;
+      if (token) {
+        const url = payload?.device_id
+          ? `https://api.spotify.com/v1/me/player/pause?device_id=${payload.device_id}`
+          : "https://api.spotify.com/v1/me/player/pause";
+        fetch(url, {
+          method: "PUT",
+          headers: { "Authorization": `Bearer ${token}` }
+        }).catch(() => {});
+      }
       if (this.player) this.player.pause();
     });
     this.handleEvent("cache_playlists", ({ playlists }) => {
@@ -56,7 +67,7 @@ const SpotifyPlayerHook = {
 
   initPlayer(token) {
     this.player = new window.Spotify.Player({
-      name: "5songs",
+      name: "5songs (Browser)",
       getOAuthToken: (cb) => cb(token),
       volume: 1
     });

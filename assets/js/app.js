@@ -22,6 +22,7 @@ import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import topbar from "../vendor/topbar"
 import SpotifyPlayerHook from "./spotify_hook.js"
+import ScrollSelectedDeviceHook from "./scroll_selected_device_hook.js"
 
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 // Disable longpoll on localhost to avoid "session misconfigured" from longpoll reconnects without cookie
@@ -29,7 +30,7 @@ let isLocalhost = typeof location !== "undefined" && /^(localhost|127\.0\.0\.1)$
 let liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: isLocalhost ? 0 : 2500,
   params: {_csrf_token: csrfToken},
-  hooks: { SpotifyPlayer: SpotifyPlayerHook }
+  hooks: { SpotifyPlayer: SpotifyPlayerHook, ScrollSelectedDevice: ScrollSelectedDeviceHook }
 })
 
 // Show progress bar on live navigation and form submits
