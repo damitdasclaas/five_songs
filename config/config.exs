@@ -61,6 +61,9 @@ config :logger, :console,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
+# Tesla (used by Exspotify’s OAuth dependency) soft-deprecation; recommended by library
+config :tesla, disable_deprecated_builder_warning: true
+
 # Exspotify: user auth only (no TokenManager)
 config :exspotify,
   token_manager: false,
