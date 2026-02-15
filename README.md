@@ -8,24 +8,17 @@
 
 Spotify-Credentials kommen aus `.env` (siehe `.env.example`).
 
-### Docker
+### Docker (lokaler Container für Development/Test)
 
-Build and run with Docker (production release):
+Mit Docker Compose – eine Zeile:
 
 ```bash
-# Build
-docker build -t five_songs .
-
-# Run (set required env vars; generate SECRET_KEY_BASE with: mix phx.gen.secret)
-docker run --rm -p 4000:4000 \
-  -e SECRET_KEY_BASE=your-secret-key-base \
-  -e SPOTIFY_CLIENT_ID=... \
-  -e SPOTIFY_CLIENT_SECRET=... \
-  -e PHX_HOST=localhost \
-  five_songs
+docker compose up --build
 ```
 
-Required env vars: `SECRET_KEY_BASE`, `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`. Optional: `PORT` (default 4000), `PHX_HOST`, `SPOTIFY_REDIRECT_URI` (e.g. `https://yourdomain.com/auth/spotify/callback`), `DNS_CLUSTER_QUERY`.
+Vorher in `.env` eintragen: `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET` und einmal `SECRET_KEY_BASE` (Wert von `mix phx.gen.secret`). Siehe `.env.example`.
+
+App: [http://127.0.0.1:4001](http://127.0.0.1:4001). In der Spotify Developer Console Redirect URI eintragen: `http://127.0.0.1:4001/auth/spotify/callback` (Spotify erlaubt „localhost“ nicht mehr).
 
 ### Fly.io (Deploy)
 

@@ -81,6 +81,6 @@ config :phoenix_live_view,
 # Disable swoosh api client as it is only required for production adapters.
 config :swoosh, :api_client, false
 
-# Spotify OAuth: Redirect URI for dev with HTTPS. Use https://127.0.0.1:4001 in the browser.
+# Spotify OAuth: Redirect URI für Dev (mix phx.server = Port 4000). Spotify erlaubt nur 127.0.0.1, kein localhost.
 config :exspotify,
-  redirect_uri: "https://127.0.0.1:4001/auth/spotify/callback"
+  redirect_uri: "http://127.0.0.1:4000/auth/spotify/callback"

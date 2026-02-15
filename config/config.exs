@@ -67,7 +67,7 @@ config :tesla, disable_deprecated_builder_warning: true
 # Exspotify: user auth only (no TokenManager)
 config :exspotify,
   token_manager: false,
-  redirect_uri: "http://localhost:4000/auth/spotify/callback"
+  redirect_uri: "http://127.0.0.1:4000/auth/spotify/callback"
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

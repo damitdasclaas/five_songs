@@ -1,0 +1,15 @@
+# Lokaler Container für Development/Test – wie Production auf Fly, nur lokal.
+# Vorher: .env mit SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SECRET_KEY_BASE (mix phx.gen.secret)
+# Spotify: "localhost" ist nicht erlaubt. Redirect URI in der App = http://127.0.0.1:4001/auth/spotify/callback
+
+services:
+  web:
+    build: .
+    image: five_songs
+    ports:
+      - "4001:4000"   # Host 4001 → Container 4000
+    env_file: .env
+    environment:
+      PHX_HOST: "127.0.0.1"
+      PORT: "4000"
+      SPOTIFY_REDIRECT_URI: "http://127.0.0.1:4001/auth/spotify/callback"
