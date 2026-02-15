@@ -24,7 +24,9 @@ defmodule FiveSongsWeb.GameLive do
       |> assign(:playlists_error, nil)
       |> assign(:selected_playlist, nil)
       |> assign(:valid_tracks, [])
+      |> assign(:tracks_cache, %{})
       |> assign(:played_track_ids, [])
+      |> assign(:rate_limit_retry_ref, nil)
       |> assign(:tracks_loading, false)
       |> assign(:show_start_menu, true)
       |> assign(:running_game, nil)
@@ -321,16 +323,18 @@ defmodule FiveSongsWeb.GameLive do
            {:ok, paging} <- Exspotify.Playlists.get_current_users_playlists(token, limit: 50) do
         all = paging.items || []
         owned = Enum.filter(all, fn p -> p.owner && p.owner.id == me.id end)
-        # Immer als Liste von Maps (id, name, track_count), damit Anzeige und Cache einheitlich sind
+        # Immer als Liste von Maps (id, name, track_count, snapshot_id), damit Anzeige und Cache einheitlich sind.
+        # snapshot_id erlaubt uns, Tracks zu cachen und nur bei Playlist-Änderung neu zu laden.
         playlists =
           Enum.map(owned, fn p ->
-            %{id: p.id, name: p.name, track_count: playlist_track_count(p)}
+            %{id: p.id, name: p.name, track_count: playlist_track_count(p), snapshot_id: p.snapshot_id}
           end)
 
         cache =
           Enum.map(playlists, fn pm ->
             m = %{"id" => pm.id, "name" => pm.name}
-            if is_integer(pm.track_count), do: Map.put(m, "track_count", pm.track_count), else: m
+            m = if is_integer(pm.track_count), do: Map.put(m, "track_count", pm.track_count), else: m
+            if pm[:snapshot_id], do: Map.put(m, "snapshot_id", pm.snapshot_id), else: m
           end)
 
         {:noreply,
@@ -346,7 +350,8 @@ defmodule FiveSongsWeb.GameLive do
           {:noreply,
            socket
            |> assign(:playlists_loading, false)
-           |> assign(:playlists_error, rate_limit_message(details))}
+           |> assign(:playlists_error, rate_limit_message(details))
+           |> schedule_rate_limit_retry(:load_playlists, details)}
         _ ->
           {:noreply,
            socket
@@ -358,42 +363,67 @@ defmodule FiveSongsWeb.GameLive do
   end
 
   def handle_info({:load_playlist_tracks, playlist_id}, socket) do
-    token = socket.assigns.spotify_token
+    # snapshot_id-basierter Cache: Wenn die Playlist sich nicht geändert hat, Tracks wiederverwenden.
+    # Spart 1-4 API-Requests pro Playlist-Auswahl (Spotify empfiehlt das explizit).
+    cached = socket.assigns.tracks_cache[playlist_id]
+    current_snapshot = get_playlist_snapshot(socket.assigns.playlists, playlist_id)
 
-    case fetch_all_playlist_items(playlist_id, token) do
-      {:ok, all_items} ->
-        tracks =
-          all_items
-          |> Enum.map(&(Map.get(&1, "track") || Map.get(&1, :track)))
-          |> Enum.reject(&is_nil/1)
-          |> Enum.filter(&(is_struct(&1, Exspotify.Structs.Track)))
-          |> FiveSongs.Tracks.filter_valid()
+    if cached && current_snapshot && cached.snapshot_id == current_snapshot do
+      # Cache-Hit → kein API-Call nötig
+      {:noreply,
+       socket
+       |> assign(:valid_tracks, cached.tracks)
+       |> assign(:playlists_error, nil)
+       |> assign(:tracks_loading, false)
+       |> cancel_refresh_timer()
+       |> compute_phase()
+       |> push_event("request_saved_state", %{playlist_id: playlist_id})}
+    else
+      # Cache-Miss oder snapshot_id geändert → von API laden
+      token = socket.assigns.spotify_token
 
-        {:noreply,
-         socket
-         |> assign(:valid_tracks, tracks)
-         |> assign(:playlists_error, nil)
-         |> assign(:tracks_loading, false)
-         |> cancel_refresh_timer()
-         |> compute_phase()
-         |> push_event("request_saved_state", %{playlist_id: playlist_id})}
+      case fetch_all_playlist_items(playlist_id, token) do
+        {:ok, all_items} ->
+          tracks =
+            all_items
+            |> Enum.map(&(Map.get(&1, "track") || Map.get(&1, :track)))
+            |> Enum.reject(&is_nil/1)
+            |> Enum.filter(&(is_struct(&1, Exspotify.Structs.Track)))
+            |> FiveSongs.Tracks.filter_valid()
 
-      {:error, %Exspotify.Error{type: :unauthorized}} ->
-        {:noreply, redirect(socket, to: ~p"/auth/spotify/refresh")}
+          new_cache = Map.put(socket.assigns.tracks_cache, playlist_id, %{
+            snapshot_id: current_snapshot,
+            tracks: tracks
+          })
 
-      {:error, %Exspotify.Error{type: :rate_limited, details: details}} ->
-        {:noreply,
-         socket
-         |> assign(:playlists_error, rate_limit_message(details))
-         |> assign(:tracks_loading, false)}
+          {:noreply,
+           socket
+           |> assign(:valid_tracks, tracks)
+           |> assign(:tracks_cache, new_cache)
+           |> assign(:playlists_error, nil)
+           |> assign(:tracks_loading, false)
+           |> cancel_refresh_timer()
+           |> compute_phase()
+           |> push_event("request_saved_state", %{playlist_id: playlist_id})}
 
-      {:error, reason} ->
-        require Logger
-        Logger.warning("Spotify get_playlist_items failed: #{inspect(reason)}")
-        {:noreply,
-         socket
-         |> assign(:playlists_error, "Tracks konnten nicht geladen werden.")
-         |> assign(:tracks_loading, false)}
+        {:error, %Exspotify.Error{type: :unauthorized}} ->
+          {:noreply, redirect(socket, to: ~p"/auth/spotify/refresh")}
+
+        {:error, %Exspotify.Error{type: :rate_limited, details: details}} ->
+          {:noreply,
+           socket
+           |> assign(:playlists_error, rate_limit_message(details))
+           |> assign(:tracks_loading, false)
+           |> schedule_rate_limit_retry({:load_playlist_tracks, playlist_id}, details)}
+
+        {:error, reason} ->
+          require Logger
+          Logger.warning("Spotify get_playlist_items failed: #{inspect(reason)}")
+          {:noreply,
+           socket
+           |> assign(:playlists_error, "Tracks konnten nicht geladen werden.")
+           |> assign(:tracks_loading, false)}
+      end
     end
   end
 
@@ -495,7 +525,7 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
   end
 
   def handle_event("back_to_start_menu", _params, socket) do
-    # Playlists NICHT löschen – wir haben sie schon, spart API-Requests beim nächsten Klick
+    # Playlists und tracks_cache NICHT löschen – spart API-Requests beim nächsten Klick
     {:noreply,
      socket
      |> assign(:show_start_menu, true)
@@ -503,6 +533,7 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
      |> assign(:playlists_loading, false)
      |> assign(:playlists_error, nil)
      |> cancel_refresh_timer()
+     |> cancel_rate_limit_retry()
      |> push_event("check_running_game", %{})}
   end
 
@@ -533,10 +564,11 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
       playlists =
         Enum.map(list, fn p ->
           base = %{id: p["id"], name: p["name"]}
-          case p["track_count"] do
+          base = case p["track_count"] do
             c when is_integer(c) -> Map.put(base, :track_count, c)
             _ -> base
           end
+          if p["snapshot_id"], do: Map.put(base, :snapshot_id, p["snapshot_id"]), else: base
         end)
 
       {:noreply, assign(socket, :playlists, playlists)}
@@ -621,6 +653,7 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
       |> cancel_timer()
       |> cancel_playback_started_timeout()
       |> cancel_refresh_timer()
+      |> cancel_rate_limit_retry()
       |> assign(:selected_playlist, nil)
       |> assign(:valid_tracks, [])
       |> assign(:played_track_ids, [])
@@ -704,9 +737,41 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
         minutes > 0 -> "#{minutes} Min."
         true -> "#{seconds} Sek."
       end
-    "Spotify Rate-Limit erreicht. Bitte #{time} warten und erneut versuchen."
+    "Spotify Rate-Limit erreicht. Automatischer Retry in #{time}."
   end
-  defp rate_limit_message(_), do: "Spotify Rate-Limit erreicht. Bitte ein paar Minuten warten und erneut versuchen."
+  defp rate_limit_message(_), do: "Spotify Rate-Limit erreicht. Automatischer Retry in Kürze."
+
+  # snapshot_id aus der Playlist-Liste holen, um zu prüfen ob der Track-Cache noch gültig ist
+  defp get_playlist_snapshot(playlists, playlist_id) when is_list(playlists) do
+    case Enum.find(playlists, fn p -> p.id == playlist_id end) do
+      %{snapshot_id: sid} -> sid
+      _ -> nil
+    end
+  end
+  defp get_playlist_snapshot(_, _), do: nil
+
+  # Automatischer Retry bei 429: plant einen erneuten Versuch nach Retry-After-Sekunden.
+  # Process.send_after blockiert NICHT den Prozess (anders als Req's eingebauter Retry).
+  # Falls der LiveView-Prozess vorher stirbt (z.B. Tab geschlossen), passiert einfach nichts.
+  defp schedule_rate_limit_retry(socket, message, %{retry_after: seconds})
+       when is_integer(seconds) and seconds > 0 do
+    cancel_rate_limit_retry(socket)
+    ref = Process.send_after(self(), message, seconds * 1000)
+    assign(socket, :rate_limit_retry_ref, ref)
+  end
+  defp schedule_rate_limit_retry(socket, message, _details) do
+    # Kein Retry-After bekannt → nach 30 Sek. nochmal versuchen
+    cancel_rate_limit_retry(socket)
+    ref = Process.send_after(self(), message, 30_000)
+    assign(socket, :rate_limit_retry_ref, ref)
+  end
+
+  defp cancel_rate_limit_retry(socket) do
+    if ref = socket.assigns[:rate_limit_retry_ref] do
+      Process.cancel_timer(ref)
+    end
+    assign(socket, :rate_limit_retry_ref, nil)
+  end
 
   defp pause_payload(socket) do
     base = %{token: socket.assigns.spotify_token}

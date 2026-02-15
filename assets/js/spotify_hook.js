@@ -32,6 +32,7 @@ const SpotifyPlayerHook = {
       if (this.player) this.player.pause();
     });
     this.handleEvent("cache_playlists", ({ playlists }) => {
+      // snapshot_id wird mitgespeichert, damit der Server Tracks-Cache validieren kann
       if (playlists && playlists.length) {
         try { sessionStorage.setItem(PLAYLIST_CACHE_KEY, JSON.stringify(playlists)); } catch (_) {}
       }
