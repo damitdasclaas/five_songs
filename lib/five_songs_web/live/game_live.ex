@@ -3,6 +3,7 @@ defmodule FiveSongsWeb.GameLive do
 
   @play_duration_options [30, 45, 60, 75, 90]
   @default_play_duration_sec 60
+  @max_auto_retry_sec 300
 
   @impl true
   def mount(_params, session, socket) do
@@ -27,6 +28,7 @@ defmodule FiveSongsWeb.GameLive do
       |> assign(:tracks_cache, %{})
       |> assign(:played_track_ids, [])
       |> assign(:rate_limit_retry_ref, nil)
+      |> assign(:rate_limit_blocked_until, nil)
       |> assign(:tracks_loading, false)
       |> assign(:show_start_menu, true)
       |> assign(:running_game, nil)
@@ -714,13 +716,17 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
   end
 
   def handle_event("load_playlists", _params, socket) do
-    socket =
-      socket
-      |> assign(:playlists_error, nil)
-      |> assign(:playlists_loading, true)
+    if rate_limit_active?(socket) do
+      {:noreply, assign(socket, :playlists_error, rate_limit_blocked_message(socket))}
+    else
+      socket =
+        socket
+        |> assign(:playlists_error, nil)
+        |> assign(:playlists_loading, true)
 
-    send(self(), :load_playlists)
-    {:noreply, socket}
+      send(self(), :load_playlists)
+      {:noreply, socket}
+    end
   end
 
   def handle_event("restore_playlists", %{"playlists" => list}, socket) do
@@ -913,7 +919,11 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
         minutes > 0 -> "#{minutes} Min."
         true -> "#{seconds} Sek."
       end
-    "Spotify Rate-Limit erreicht. Automatischer Retry in #{time}."
+    if seconds > @max_auto_retry_sec do
+      "Spotify-Sperre: #{time}. Kein Auto-Retry – bitte warte ab, Retries verlängern die Sperre!"
+    else
+      "Spotify Rate-Limit erreicht. Automatischer Retry in #{time}."
+    end
   end
   defp rate_limit_message(_), do: "Spotify Rate-Limit erreicht. Automatischer Retry in Kürze."
 
@@ -957,19 +967,24 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
   end
   defp get_playlist_snapshot(_, _), do: nil
 
-  # Automatischer Retry bei 429: plant einen erneuten Versuch nach Retry-After-Sekunden.
-  # Process.send_after blockiert NICHT den Prozess (anders als Req's eingebauter Retry).
-  # Falls der LiveView-Prozess vorher stirbt (z.B. Tab geschlossen), passiert einfach nichts.
+  # Automatischer Retry bei 429: nur wenn Retry-After <= 5 Min (300s).
+  # Bei laengeren Sperren (z.B. 1323 Min) wuerde ein Retry die Sperre verlängern.
   defp schedule_rate_limit_retry(socket, message, %{retry_after: seconds})
-       when is_integer(seconds) and seconds > 0 do
+       when is_integer(seconds) and seconds > 0 and seconds <= @max_auto_retry_sec do
     cancel_rate_limit_retry(socket)
     ref = Process.send_after(self(), message, seconds * 1000)
     assign(socket, :rate_limit_retry_ref, ref)
   end
-  defp schedule_rate_limit_retry(socket, message, _details) do
-    # Kein Retry-After bekannt → nach 30 Sek. nochmal versuchen
+  defp schedule_rate_limit_retry(socket, _message, %{retry_after: seconds})
+       when is_integer(seconds) and seconds > @max_auto_retry_sec do
+    # Sperre zu lang → NICHT automatisch retrien, das macht es nur schlimmer
     cancel_rate_limit_retry(socket)
-    ref = Process.send_after(self(), message, 30_000)
+    assign(socket, :rate_limit_blocked_until, System.monotonic_time(:second) + seconds)
+  end
+  defp schedule_rate_limit_retry(socket, message, _details) do
+    # Kein Retry-After bekannt → nach 60 Sek. nochmal versuchen
+    cancel_rate_limit_retry(socket)
+    ref = Process.send_after(self(), message, 60_000)
     assign(socket, :rate_limit_retry_ref, ref)
   end
 
@@ -977,7 +992,31 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
     if ref = socket.assigns[:rate_limit_retry_ref] do
       Process.cancel_timer(ref)
     end
-    assign(socket, :rate_limit_retry_ref, nil)
+    socket
+    |> assign(:rate_limit_retry_ref, nil)
+    |> assign(:rate_limit_blocked_until, nil)
+  end
+
+  # Prüft ob wir gerade in einer langen Sperre stecken (> 5 Min Retry-After)
+  defp rate_limit_active?(socket) do
+    case socket.assigns[:rate_limit_blocked_until] do
+      nil -> false
+      until -> System.monotonic_time(:second) < until
+    end
+  end
+
+  defp rate_limit_blocked_message(socket) do
+    case socket.assigns[:rate_limit_blocked_until] do
+      nil -> "Spotify Rate-Limit aktiv. Bitte warte etwas."
+      until ->
+        remaining = max(until - System.monotonic_time(:second), 0)
+        minutes = div(remaining, 60)
+        if minutes > 0 do
+          "Spotify-Sperre aktiv. Bitte warte noch ca. #{minutes} Min. Retries während der Sperre verlängern sie!"
+        else
+          "Spotify-Sperre aktiv. Bitte warte noch etwas."
+        end
+    end
   end
 
   defp pause_payload(socket) do

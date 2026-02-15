@@ -7,6 +7,7 @@ const SpotifyPlayerHook = {
   deviceId: null,
   pendingPlay: null,
   isPlaying: false,
+  lastPlayWasExternal: false,
 
   mounted() {
     this.handleEvent("play_track", ({ uri, token, device_id }) => {
@@ -20,12 +21,14 @@ const SpotifyPlayerHook = {
       }
     });
     this.handleEvent("pause_track", (payload) => {
-      if (!this.isPlaying) {
-        // Kein Song aktiv → keinen API-Call verschwenden
-        if (this.player) this.player.pause();
+      if (!this.isPlaying) return;
+      this.isPlaying = false;
+      // Browser-SDK-Player: pause via SDK (WebSocket, kein REST-API-Call, kein Rate Limit)
+      if (!this.lastPlayWasExternal && this.player) {
+        this.player.pause();
         return;
       }
-      this.isPlaying = false;
+      // Externes Gerät: REST API nötig
       const token = payload?.token || this.lastToken;
       if (token) {
         const url = payload?.device_id
@@ -36,7 +39,6 @@ const SpotifyPlayerHook = {
           headers: { "Authorization": `Bearer ${token}` }
         }).catch(() => {});
       }
-      if (this.player) this.player.pause();
     });
     this.handleEvent("cache_playlists", ({ playlists }) => {
       // snapshot_id wird mitgespeichert, damit der Server Tracks-Cache validieren kann
@@ -147,6 +149,7 @@ const SpotifyPlayerHook = {
     this.isPlaying = true;
     this._playbackStartedSent = false;
     const isExternalDevice = deviceId && deviceId !== this.deviceId;
+    this.lastPlayWasExternal = isExternalDevice;
     fetch(`https://api.spotify.com/v1/me/player/play?device_id=${targetId}`, {
       method: "PUT",
       body: JSON.stringify({ uris: [uri] }),
