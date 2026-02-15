@@ -391,14 +391,11 @@ defmodule FiveSongsWeb.GameLive do
     token = socket.assigns.spotify_token
 
     result =
-      with {:ok, me} <- Exspotify.Users.get_current_user_profile(token),
-           {:ok, paging} <- Exspotify.Playlists.get_current_users_playlists(token, limit: 50) do
+      with {:ok, paging} <- Exspotify.Playlists.get_current_users_playlists(token, limit: 50) do
         all = paging.items || []
-        owned = Enum.filter(all, fn p -> p.owner && p.owner.id == me.id end)
-        # Immer als Liste von Maps (id, name, track_count, snapshot_id), damit Anzeige und Cache einheitlich sind.
-        # snapshot_id erlaubt uns, Tracks zu cachen und nur bei Playlist-Änderung neu zu laden.
+        # Alle Playlists aus der Bibliothek (eigene + gefolgte/öffentliche)
         playlists =
-          Enum.map(owned, fn p ->
+          Enum.map(all, fn p ->
             %{id: p.id, name: p.name, track_count: playlist_track_count(p), snapshot_id: p.snapshot_id}
           end)
 
