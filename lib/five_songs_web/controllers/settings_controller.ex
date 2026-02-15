@@ -7,7 +7,6 @@ defmodule FiveSongsWeb.SettingsController do
     if logged_in?(conn) do
       conn
       |> put_session(:spotify_device_id, id)
-      |> put_flash(:info, "Abspielgerät gespeichert.")
       |> redirect(to: ~p"/settings")
     else
       redirect(conn, to: ~p"/")
@@ -21,7 +20,6 @@ defmodule FiveSongsWeb.SettingsController do
       sec = sec |> String.to_integer() |> then(&if(&1 in @duration_options, do: &1, else: 60))
       conn
       |> put_session(:play_duration_sec, sec)
-      |> put_flash(:info, "Spieldauer gespeichert.")
       |> redirect(to: ~p"/settings")
     else
       redirect(conn, to: ~p"/")

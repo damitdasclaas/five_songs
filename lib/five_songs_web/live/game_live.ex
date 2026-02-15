@@ -149,7 +149,9 @@ defmodule FiveSongsWeb.GameLive do
     ~H"""
     <div class="flex min-h-screen flex-col items-center justify-center px-4">
       <div class="absolute right-4 top-4">
-        <a href={~p"/auth/logout"} class="text-sm text-zinc-400 hover:text-white">Abmelden</a>
+        <a href={~p"/auth/logout"} class="inline-flex items-center justify-center rounded-full bg-zinc-800/80 p-2.5 text-zinc-400 transition hover:bg-zinc-700 hover:text-white active:bg-zinc-600" title="Abmelden">
+          <.icon name="hero-arrow-right-start-on-rectangle" class="h-5 w-5" />
+        </a>
       </div>
       <h1 class="text-4xl font-bold tracking-tight">5songs</h1>
       <p class="mt-2 text-zinc-400">Playlist wählen und Songs erraten.</p>
@@ -189,11 +191,17 @@ defmodule FiveSongsWeb.GameLive do
   defp playlist_screen(assigns) do
     ~H"""
     <div class="flex min-h-screen flex-col items-center justify-center px-4">
-      <div class="absolute left-4 right-4 top-4 flex justify-between">
-        <button type="button" phx-click="back_to_start_menu" class="text-sm text-zinc-400 hover:text-white">← Menü</button>
-        <div class="flex gap-4">
-          <a href={~p"/settings"} class="text-sm text-zinc-400 hover:text-white">Einstellungen</a>
-          <a href={~p"/auth/logout"} class="text-sm text-zinc-400 hover:text-white">Abmelden</a>
+      <div class="absolute left-4 right-4 top-4 flex items-center justify-between">
+        <button type="button" phx-click="back_to_start_menu" class="inline-flex items-center gap-1 rounded-full bg-zinc-800/80 px-3 py-2 text-sm text-zinc-300 transition hover:bg-zinc-700 active:bg-zinc-600">
+          <.icon name="hero-chevron-left" class="h-4 w-4" /> Menü
+        </button>
+        <div class="flex items-center gap-2">
+          <a href={~p"/settings"} class="inline-flex items-center justify-center rounded-full bg-zinc-800/80 p-2.5 text-zinc-400 transition hover:bg-zinc-700 hover:text-white active:bg-zinc-600" title="Einstellungen">
+            <.icon name="hero-cog-6-tooth" class="h-5 w-5" />
+          </a>
+          <a href={~p"/auth/logout"} class="inline-flex items-center justify-center rounded-full bg-zinc-800/80 p-2.5 text-zinc-400 transition hover:bg-zinc-700 hover:text-white active:bg-zinc-600" title="Abmelden">
+            <.icon name="hero-arrow-right-start-on-rectangle" class="h-5 w-5" />
+          </a>
         </div>
       </div>
       <div class="flex items-center gap-2">
@@ -255,9 +263,13 @@ defmodule FiveSongsWeb.GameLive do
   defp playlist_detail_screen(assigns) do
     ~H"""
     <div class="flex min-h-screen flex-col items-center justify-center px-4">
-      <div class="absolute left-4 right-4 top-4 flex justify-between">
-        <button type="button" phx-click="back_to_playlists" class="text-sm text-zinc-400 hover:text-white">← Playlists</button>
-        <a href={~p"/auth/logout"} class="text-sm text-zinc-400 hover:text-white">Abmelden</a>
+      <div class="absolute left-4 right-4 top-4 flex items-center justify-between">
+        <button type="button" phx-click="back_to_playlists" class="inline-flex items-center gap-1 rounded-full bg-zinc-800/80 px-3 py-2 text-sm text-zinc-300 transition hover:bg-zinc-700 active:bg-zinc-600">
+          <.icon name="hero-chevron-left" class="h-4 w-4" /> Playlists
+        </button>
+        <a href={~p"/auth/logout"} class="inline-flex items-center justify-center rounded-full bg-zinc-800/80 p-2.5 text-zinc-400 transition hover:bg-zinc-700 hover:text-white active:bg-zinc-600" title="Abmelden">
+          <.icon name="hero-arrow-right-start-on-rectangle" class="h-5 w-5" />
+        </a>
       </div>
       <h1 class="text-2xl font-bold">{@selected_playlist.name}</h1>
       <div :if={@tracks_loading} class="mt-4 text-zinc-400">Lade Tracks…</div>
@@ -299,11 +311,11 @@ defmodule FiveSongsWeb.GameLive do
   defp game_screen(assigns) do
     ~H"""
     <div class="flex min-h-screen flex-col">
-      <div class="absolute left-4 right-4 top-4 z-10 flex justify-between">
-        <button phx-click="back_to_playlists" type="button" class="text-sm text-zinc-400 hover:text-white">
-          ← Zurück
+      <div class="absolute left-4 right-4 top-4 z-10 flex items-center justify-between">
+        <button phx-click="back_to_playlists" type="button" class="inline-flex items-center gap-1 rounded-full bg-zinc-800/80 px-3 py-2 text-sm text-zinc-300 transition hover:bg-zinc-700 active:bg-zinc-600">
+          <.icon name="hero-chevron-left" class="h-4 w-4" /> Zurück
         </button>
-        <span class="rounded-full bg-zinc-800 px-3 py-1 text-sm tabular-nums text-zinc-300">{@played_count}/{@total_count}</span>
+        <span class="rounded-full bg-zinc-800 px-3 py-1.5 text-sm font-medium tabular-nums text-zinc-300">{@played_count}/{@total_count}</span>
       </div>
       <%!-- Idle: Warten auf "Nächste Runde" --%>
       <div

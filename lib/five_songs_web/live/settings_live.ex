@@ -46,7 +46,9 @@ defmodule FiveSongsWeb.SettingsLive do
       <div class="mx-auto max-w-md space-y-8">
         <div class="flex items-center justify-between">
           <h1 class="text-xl font-bold">Einstellungen</h1>
-          <a href={~p"/"} class="text-sm text-zinc-400 hover:text-white">← Zurück</a>
+          <a href={~p"/"} class="inline-flex items-center gap-1 rounded-full bg-zinc-800/80 px-3 py-2 text-sm text-zinc-300 transition hover:bg-zinc-700 active:bg-zinc-600">
+            <.icon name="hero-chevron-left" class="h-4 w-4" /> Zurück
+          </a>
         </div>
 
         <section class="rounded-xl bg-zinc-800/60 p-4">
