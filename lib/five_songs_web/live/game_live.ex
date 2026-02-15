@@ -31,6 +31,8 @@ defmodule FiveSongsWeb.GameLive do
       |> assign(:show_start_menu, true)
       |> assign(:running_game, nil)
       |> assign(:phase, nil)
+      |> assign(:game_started, false)
+      |> assign(:year_range, nil)
       |> assign(:game_phase, :idle)
       |> assign(:current_track, nil)
       |> assign(:current_category, nil)
@@ -59,6 +61,7 @@ defmodule FiveSongsWeb.GameLive do
       cond do
         is_nil(socket.assigns.spotify_token) -> :login
         is_nil(socket.assigns.selected_playlist) -> :choose_playlist
+        not socket.assigns.game_started -> :playlist_detail
         true -> :game
       end
 
@@ -101,8 +104,14 @@ defmodule FiveSongsWeb.GameLive do
         playlists={@playlists}
         playlists_loading={@playlists_loading}
         playlists_error={@playlists_error}
-        tracks_loading={@tracks_loading}
+      />
+      <.playlist_detail_screen
+        :if={@phase == :playlist_detail}
         selected_playlist={@selected_playlist}
+        tracks_loading={@tracks_loading}
+        playlists_error={@playlists_error}
+        total_count={length(@valid_tracks || [])}
+        year_range={@year_range}
       />
       <.game_screen
         :if={@phase == :game}
@@ -222,8 +231,7 @@ defmodule FiveSongsWeb.GameLive do
           Erneut bei Spotify anmelden
         </a>
       </div>
-      <div :if={@tracks_loading} class="mt-4 text-zinc-400">Lade Tracks…</div>
-      <ul :if={@playlists && !@playlists_loading && !@tracks_loading} class="mt-6 w-full max-w-md space-y-2">
+      <ul :if={@playlists && !@playlists_loading} class="mt-6 w-full max-w-md space-y-2">
         <li :for={playlist <- @playlists}>
           <button
             phx-click="select_playlist"
@@ -231,8 +239,7 @@ defmodule FiveSongsWeb.GameLive do
             phx-value-name={playlist.name}
             class="w-full rounded-lg bg-zinc-800 px-4 py-3 text-left hover:bg-zinc-700"
           >
-            <span>{playlist.name}</span>
-            <span :if={playlist_track_count(playlist)} class="ml-2 text-zinc-400">({playlist_track_count(playlist)} Songs)</span>
+            {playlist.name}
           </button>
         </li>
       </ul>
@@ -243,38 +250,79 @@ defmodule FiveSongsWeb.GameLive do
     """
   end
 
+  defp playlist_detail_screen(assigns) do
+    ~H"""
+    <div class="flex min-h-screen flex-col items-center justify-center px-4">
+      <div class="absolute left-4 right-4 top-4 flex justify-between">
+        <button type="button" phx-click="back_to_playlists" class="text-sm text-zinc-400 hover:text-white">← Playlists</button>
+        <a href={~p"/auth/logout"} class="text-sm text-zinc-400 hover:text-white">Abmelden</a>
+      </div>
+      <h1 class="text-2xl font-bold">{@selected_playlist.name}</h1>
+      <div :if={@tracks_loading} class="mt-4 text-zinc-400">Lade Tracks…</div>
+      <p :if={@playlists_error} class="mt-2 max-w-md text-center text-red-400">{@playlists_error}</p>
+      <div :if={!@tracks_loading && !@playlists_error && @total_count > 0} class="mt-4 text-center">
+        <p class="text-lg text-zinc-300">{@total_count} Songs</p>
+        <p :if={@year_range} class="text-zinc-500">{elem(@year_range, 0)}–{elem(@year_range, 1)}</p>
+      </div>
+      <div :if={!@tracks_loading} class="mt-8 flex flex-col gap-3">
+        <button
+          :if={@total_count > 0}
+          phx-click="start_playlist"
+          class="rounded-full bg-[#1DB954] px-8 py-4 text-lg font-semibold text-white transition hover:bg-[#1ed760]"
+        >
+          Diese Playlist spielen
+        </button>
+        <button
+          phx-click="back_to_playlists"
+          class="rounded-full border border-zinc-600 bg-transparent px-8 py-4 text-lg font-semibold text-white transition hover:bg-zinc-800"
+        >
+          Andere Playlist wählen
+        </button>
+      </div>
+    </div>
+    """
+  end
+
   defp game_screen(assigns) do
     ~H"""
     <div class="flex min-h-screen flex-col">
       <div class="absolute left-4 right-4 top-4 z-10 flex justify-between">
-        <button
-          phx-click="back_to_playlists"
-          type="button"
-          class="text-sm text-zinc-400 hover:text-white"
-        >
+        <button phx-click="back_to_playlists" type="button" class="text-sm text-zinc-400 hover:text-white">
           ← Zurück
         </button>
-        <div class="flex items-center gap-4">
-          <span class="text-xs tabular-nums text-zinc-500">{@played_count}/{@total_count} Songs</span>
-          <a href={~p"/settings"} class="text-sm text-zinc-400 hover:text-white">Einstellungen</a>
-          <a href={~p"/auth/logout"} class="text-sm text-zinc-400 hover:text-white">Abmelden</a>
-        </div>
+        <span class="text-xs tabular-nums text-zinc-500">{@played_count}/{@total_count} Songs</span>
       </div>
       <%!-- Idle: Warten auf "Nächste Runde" --%>
       <div
         :if={@game_phase == :idle}
-        class="flex flex-1 flex-col items-center justify-center bg-zinc-800 px-4"
+        class="flex flex-1 flex-col items-center justify-center bg-zinc-800 px-6"
       >
         <p class="text-xl text-zinc-400">Bereit für die nächste Runde?</p>
+        <button
+          phx-click="next_round"
+          class="mt-8 w-full max-w-xs rounded-lg bg-[#1DB954] py-3 font-semibold text-white hover:bg-[#1ed760] disabled:opacity-50"
+          disabled={@valid_tracks_count == 0}
+        >
+          Nächste Runde
+        </button>
+        <p :if={@valid_tracks_count == 0} class="mt-3 text-center text-sm text-amber-400">
+          Alle {@total_count} Songs dieser Playlist wurden gespielt!
+        </p>
       </div>
       <%!-- Kategorie ausgelost → "Song abspielen" --%>
       <div
         :if={@game_phase == :category_picked && @current_category}
-        class="flex flex-1 flex-col items-center justify-center px-4 transition-colors"
+        class="flex flex-1 flex-col items-center justify-center px-6 transition-colors"
         style={"background-color: #{@current_category.color}"}
       >
         <p class="text-3xl font-bold text-white">{@current_category.label}</p>
         <p class="mt-2 text-white/70">Kategorie dieser Runde</p>
+        <button
+          phx-click="play_song"
+          class="mt-8 w-full max-w-xs rounded-lg bg-white/20 py-3 font-semibold text-white backdrop-blur hover:bg-white/30"
+        >
+          Song abspielen
+        </button>
       </div>
       <%!-- Countdown --%>
       <div
@@ -288,23 +336,29 @@ defmodule FiveSongsWeb.GameLive do
       <%!-- Playing --%>
       <div
         :if={@game_phase == :playing && @current_category}
-        class="flex flex-1 flex-col items-center justify-center transition-colors"
+        class="flex flex-1 flex-col items-center justify-center px-6 transition-colors"
         style={"background-color: #{@current_category.color}"}
       >
         <p class="text-2xl font-semibold text-white/90">{@current_category.label}</p>
-        <p :if={@time_left_sec != nil} class="mt-2 text-lg text-white/80">
+        <p :if={@time_left_sec != nil} class="mt-2 text-4xl font-bold tabular-nums text-white">
           {@time_left_sec}s
         </p>
+        <button
+          phx-click="stop_round"
+          class="mt-8 w-full max-w-xs rounded-lg bg-white/20 py-3 font-semibold text-white backdrop-blur hover:bg-white/30"
+        >
+          Stopp / Reveal
+        </button>
       </div>
       <%!-- Reveal: "Ergebnis anzeigen" --%>
       <div
         :if={@game_phase == :reveal && @reveal_data && !@show_reveal}
-        class="flex flex-1 flex-col items-center justify-center bg-zinc-800 px-4"
+        class="flex flex-1 flex-col items-center justify-center bg-zinc-800 px-6"
       >
-        <p class="text-center text-zinc-400">Runde vorbei.</p>
+        <p class="text-xl text-zinc-400">Runde vorbei.</p>
         <button
           phx-click="show_reveal"
-          class="mt-6 rounded-lg bg-[#1DB954] px-8 py-3 font-semibold text-white hover:bg-[#1ed760]"
+          class="mt-8 w-full max-w-xs rounded-lg bg-[#1DB954] py-3 font-semibold text-white hover:bg-[#1ed760]"
         >
           Ergebnis anzeigen
         </button>
@@ -312,41 +366,19 @@ defmodule FiveSongsWeb.GameLive do
       <%!-- Reveal: Ergebnis sichtbar --%>
       <div
         :if={@game_phase == :reveal && @reveal_data && @show_reveal}
-        class="flex flex-1 flex-col items-center justify-center bg-zinc-800 px-4"
+        class="flex flex-1 flex-col items-center justify-center bg-zinc-800 px-6"
       >
         <p class="text-4xl font-bold text-white">{@reveal_data.year}</p>
         <p class="mt-4 text-2xl font-semibold">{@reveal_data.title}</p>
         <p class="mt-2 text-xl text-zinc-400">{@reveal_data.artist}</p>
-      </div>
-      <%!-- Bottom Bar --%>
-      <div class="border-t border-zinc-700 p-4 space-y-3">
-        <%!-- "Nächste Runde" → Kategorie auslosen (idle oder nach reveal) --%>
         <button
-          :if={@game_phase == :idle || (@game_phase == :reveal && @show_reveal)}
           phx-click="next_round"
-          class="w-full rounded-lg bg-[#1DB954] py-3 font-semibold text-white hover:bg-[#1ed760] disabled:opacity-50"
+          class="mt-8 w-full max-w-xs rounded-lg bg-[#1DB954] py-3 font-semibold text-white hover:bg-[#1ed760] disabled:opacity-50"
           disabled={@valid_tracks_count == 0}
         >
           Nächste Runde
         </button>
-        <%!-- "Song abspielen" → Track wählen und Countdown --%>
-        <button
-          :if={@game_phase == :category_picked}
-          phx-click="play_song"
-          class="w-full rounded-lg bg-[#1DB954] py-3 font-semibold text-white hover:bg-[#1ed760]"
-        >
-          Song abspielen
-        </button>
-        <%!-- Stopp während Playback --%>
-        <button
-          :if={@game_phase == :playing}
-          phx-click="stop_round"
-          class="w-full rounded-lg bg-zinc-600 py-3 font-semibold text-white hover:bg-zinc-500"
-        >
-          Stopp / Reveal
-        </button>
-        <%!-- Hinweis: Alle Songs gespielt --%>
-        <p :if={@valid_tracks_count == 0 && (@game_phase == :idle || (@game_phase == :reveal && @show_reveal))} class="text-center text-sm text-amber-400">
+        <p :if={@valid_tracks_count == 0} class="mt-3 text-center text-sm text-amber-400">
           Alle {@total_count} Songs dieser Playlist wurden gespielt!
         </p>
       </div>
@@ -413,6 +445,7 @@ defmodule FiveSongsWeb.GameLive do
       {:noreply,
        socket
        |> assign(:valid_tracks, cached.tracks)
+       |> assign(:year_range, cached[:year_range])
        |> assign(:playlists_error, nil)
        |> assign(:tracks_loading, false)
        |> cancel_refresh_timer()
@@ -431,14 +464,17 @@ defmodule FiveSongsWeb.GameLive do
             |> Enum.filter(&(is_struct(&1, Exspotify.Structs.Track)))
             |> FiveSongs.Tracks.filter_valid()
 
+          year_range = compute_year_range(tracks)
           new_cache = Map.put(socket.assigns.tracks_cache, playlist_id, %{
             snapshot_id: current_snapshot,
-            tracks: tracks
+            tracks: tracks,
+            year_range: year_range
           })
 
           {:noreply,
            socket
            |> assign(:valid_tracks, tracks)
+           |> assign(:year_range, year_range)
            |> assign(:tracks_cache, new_cache)
            |> assign(:playlists_error, nil)
            |> assign(:tracks_loading, false)
@@ -569,6 +605,7 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
       socket
       |> assign(:tracks_loading, true)
       |> assign(:playlists_error, nil)
+      |> assign(:game_started, true)
       |> assign(:selected_playlist, %{id: id, name: name})
 
     send(self(), {:load_playlist_tracks, id})
@@ -594,10 +631,21 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
       socket
       |> assign(:tracks_loading, true)
       |> assign(:playlists_error, nil)
+      |> assign(:game_started, false)
       |> assign(:selected_playlist, %{id: id, name: name})
+      |> compute_phase()
 
     send(self(), {:load_playlist_tracks, id})
     {:noreply, socket}
+  end
+
+  # User bestätigt Playlist im Detail-Screen → Spiel starten
+  def handle_event("start_playlist", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:game_started, true)
+     |> assign(:game_phase, :idle)
+     |> compute_phase()}
   end
 
   def handle_event("load_playlists", _params, socket) do
@@ -718,6 +766,8 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
       |> assign(:valid_tracks, [])
       |> assign(:played_track_ids, [])
       |> assign(:tracks_loading, false)
+      |> assign(:game_started, false)
+      |> assign(:year_range, nil)
       |> assign(:game_phase, :idle)
       |> assign(:current_track, nil)
       |> assign(:current_category, nil)
@@ -800,6 +850,30 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
     "Spotify Rate-Limit erreicht. Automatischer Retry in #{time}."
   end
   defp rate_limit_message(_), do: "Spotify Rate-Limit erreicht. Automatischer Retry in Kürze."
+
+  # Jahrspanne (min/max) aus den Album-Release-Dates der Tracks berechnen
+  defp compute_year_range(tracks) when is_list(tracks) do
+    years =
+      tracks
+      |> Enum.map(fn t -> t.album && t.album.release_date end)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.map(fn date ->
+        case String.split(date, "-") do
+          [y | _] when byte_size(y) == 4 ->
+            case Integer.parse(y) do
+              {n, _} -> n
+              :error -> nil
+            end
+          _ -> nil
+        end
+      end)
+      |> Enum.reject(&is_nil/1)
+
+    case years do
+      [] -> nil
+      _ -> {Enum.min(years), Enum.max(years)}
+    end
+  end
 
   # snapshot_id aus der Playlist-Liste holen, um zu prüfen ob der Track-Cache noch gültig ist
   defp get_playlist_snapshot(playlists, playlist_id) when is_list(playlists) do
