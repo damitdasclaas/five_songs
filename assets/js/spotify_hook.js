@@ -157,13 +157,17 @@ const SpotifyPlayerHook = {
         "Authorization": `Bearer ${token}`,
         "Content-Type": "application/json"
       }
-    }).then(() => {
+    }).then((resp) => {
+      if (resp.status === 429) {
+        this.isPlaying = false;
+        return;
+      }
       if (isExternalDevice) {
         setTimeout(() => this.pushEvent("playback_started", {}), 500);
       } else {
         this.waitForPlaybackStarted();
       }
-    }).catch(() => {});
+    }).catch(() => { this.isPlaying = false; });
   },
 
   waitForPlaybackStarted() {

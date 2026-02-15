@@ -668,15 +668,19 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
   end
 
   def handle_event("continue_game", %{"id" => id, "name" => name}, socket) do
-    socket =
-      socket
-      |> assign(:tracks_loading, true)
-      |> assign(:playlists_error, nil)
-      |> assign(:game_started, true)
-      |> assign(:selected_playlist, %{id: id, name: name})
+    if rate_limit_active?(socket) do
+      {:noreply, assign(socket, :playlists_error, rate_limit_blocked_message(socket))}
+    else
+      socket =
+        socket
+        |> assign(:tracks_loading, true)
+        |> assign(:playlists_error, nil)
+        |> assign(:game_started, true)
+        |> assign(:selected_playlist, %{id: id, name: name})
 
-    send(self(), {:load_playlist_tracks, id})
-    {:noreply, socket}
+      send(self(), {:load_playlist_tracks, id})
+      {:noreply, socket}
+    end
   end
 
   def handle_event("back_to_start_menu", _params, socket) do
@@ -694,16 +698,20 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
 
   @impl true
   def handle_event("select_playlist", %{"id" => id, "name" => name}, socket) do
-    socket =
-      socket
-      |> assign(:tracks_loading, true)
-      |> assign(:playlists_error, nil)
-      |> assign(:game_started, false)
-      |> assign(:selected_playlist, %{id: id, name: name})
-      |> compute_phase()
+    if rate_limit_active?(socket) do
+      {:noreply, assign(socket, :playlists_error, rate_limit_blocked_message(socket))}
+    else
+      socket =
+        socket
+        |> assign(:tracks_loading, true)
+        |> assign(:playlists_error, nil)
+        |> assign(:game_started, false)
+        |> assign(:selected_playlist, %{id: id, name: name})
+        |> compute_phase()
 
-    send(self(), {:load_playlist_tracks, id})
-    {:noreply, socket}
+      send(self(), {:load_playlist_tracks, id})
+      {:noreply, socket}
+    end
   end
 
   # User bestätigt Playlist im Detail-Screen → Spiel starten
@@ -748,14 +756,18 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
   end
 
   def handle_event("retry", _params, socket) do
-    socket = assign(socket, :playlists_error, nil)
-    if socket.assigns.selected_playlist do
-      socket = assign(socket, :tracks_loading, true)
-      send(self(), {:load_playlist_tracks, socket.assigns.selected_playlist.id})
+    if rate_limit_active?(socket) do
+      {:noreply, assign(socket, :playlists_error, rate_limit_blocked_message(socket))}
     else
-      send(self(), :load_playlists)
+      socket = assign(socket, :playlists_error, nil)
+      if socket.assigns.selected_playlist do
+        socket = assign(socket, :tracks_loading, true)
+        send(self(), {:load_playlist_tracks, socket.assigns.selected_playlist.id})
+      else
+        send(self(), :load_playlists)
+      end
+      {:noreply, socket}
     end
-    {:noreply, socket}
   end
 
   # Schritt 1: Kategorie auslosen (später mit Animation). Track wird noch NICHT gewählt.
@@ -827,6 +839,8 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
   end
 
   def handle_event("back_to_playlists", _params, socket) do
+    was_playing = socket.assigns.game_phase in [:playing, :countdown]
+
     socket =
       socket
       |> cancel_timer()
@@ -850,7 +864,8 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
       |> assign(:countdown_sec, nil)
       |> compute_phase()
       |> schedule_token_refresh()
-      |> push_event("pause_track", pause_payload(socket))
+
+    socket = if was_playing, do: push_event(socket, "pause_track", pause_payload(socket)), else: socket
 
     {:noreply, socket}
   end
