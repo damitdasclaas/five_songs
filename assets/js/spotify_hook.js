@@ -6,6 +6,7 @@ const SpotifyPlayerHook = {
   player: null,
   deviceId: null,
   pendingPlay: null,
+  isPlaying: false,
 
   mounted() {
     this.handleEvent("play_track", ({ uri, token, device_id }) => {
@@ -19,6 +20,12 @@ const SpotifyPlayerHook = {
       }
     });
     this.handleEvent("pause_track", (payload) => {
+      if (!this.isPlaying) {
+        // Kein Song aktiv → keinen API-Call verschwenden
+        if (this.player) this.player.pause();
+        return;
+      }
+      this.isPlaying = false;
       const token = payload?.token || this.lastToken;
       if (token) {
         const url = payload?.device_id
@@ -137,6 +144,7 @@ const SpotifyPlayerHook = {
   playUri(uri, token, deviceId) {
     const targetId = deviceId || this.deviceId;
     if (!targetId || !uri || !token) return;
+    this.isPlaying = true;
     this._playbackStartedSent = false;
     const isExternalDevice = deviceId && deviceId !== this.deviceId;
     fetch(`https://api.spotify.com/v1/me/player/play?device_id=${targetId}`, {
