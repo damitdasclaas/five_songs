@@ -6,9 +6,14 @@ const SpotifyPlayerHook = {
   pendingPlay: null,
 
   mounted() {
-    this.handleEvent("play_track", ({ uri, token }) => {
-      this.pendingPlay = { uri, token };
-      this.ensurePlayerThenPlay(token);
+    this.handleEvent("play_track", ({ uri, token, device_id }) => {
+      this.pendingPlay = { uri, token, device_id };
+      if (device_id) {
+        this.playUri(uri, token, device_id);
+        this.pendingPlay = null;
+      } else {
+        this.ensurePlayerThenPlay(token);
+      }
     });
     this.handleEvent("pause_track", () => {
       if (this.player) this.player.pause();
@@ -34,7 +39,7 @@ const SpotifyPlayerHook = {
 
   ensurePlayerThenPlay(token) {
     if (this.player && this.deviceId) {
-      this.playUri(this.pendingPlay.uri, this.pendingPlay.token);
+      this.playUri(this.pendingPlay.uri, this.pendingPlay.token, this.deviceId);
       this.pendingPlay = null;
       return;
     }
@@ -58,7 +63,7 @@ const SpotifyPlayerHook = {
     this.player.addListener("ready", ({ device_id }) => {
       this.deviceId = device_id;
       if (this.pendingPlay) {
-        this.playUri(this.pendingPlay.uri, this.pendingPlay.token);
+        this.playUri(this.pendingPlay.uri, this.pendingPlay.token, device_id);
         this.pendingPlay = null;
       }
     });
@@ -66,10 +71,12 @@ const SpotifyPlayerHook = {
     this.player.connect();
   },
 
-  playUri(uri, token) {
-    if (!this.deviceId || !uri || !token) return;
+  playUri(uri, token, deviceId) {
+    const targetId = deviceId || this.deviceId;
+    if (!targetId || !uri || !token) return;
     this._playbackStartedSent = false;
-    fetch(`https://api.spotify.com/v1/me/player/play?device_id=${this.deviceId}`, {
+    const isExternalDevice = deviceId && deviceId !== this.deviceId;
+    fetch(`https://api.spotify.com/v1/me/player/play?device_id=${targetId}`, {
       method: "PUT",
       body: JSON.stringify({ uris: [uri] }),
       headers: {
@@ -77,7 +84,11 @@ const SpotifyPlayerHook = {
         "Content-Type": "application/json"
       }
     }).then(() => {
-      this.waitForPlaybackStarted();
+      if (isExternalDevice) {
+        setTimeout(() => this.pushEvent("playback_started", {}), 500);
+      } else {
+        this.waitForPlaybackStarted();
+      }
     }).catch(() => {});
   },
 

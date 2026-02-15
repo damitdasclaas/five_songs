@@ -9,10 +9,16 @@ defmodule FiveSongsWeb.GameLive do
     token = session["spotify_access_token"]
     refresh_token = session["spotify_refresh_token"]
 
+    play_duration_sec =
+      session["play_duration_sec"] ||
+        Application.get_env(:five_songs, :play_duration_sec, @default_play_duration_sec)
+    play_duration_sec = if play_duration_sec in @play_duration_options, do: play_duration_sec, else: @default_play_duration_sec
+
     socket =
       socket
       |> assign(:spotify_token, token)
       |> assign(:spotify_refresh_token, refresh_token)
+      |> assign(:spotify_device_id, session["spotify_device_id"])
       |> assign(:playlists, nil)
       |> assign(:playlists_loading, false)
       |> assign(:playlists_error, nil)
@@ -27,7 +33,7 @@ defmodule FiveSongsWeb.GameLive do
       |> assign(:time_left_sec, nil)
       |> assign(:timer_ref, nil)
       |> assign(:refresh_timer_ref, nil)
-      |> assign(:play_duration_sec, Application.get_env(:five_songs, :play_duration_sec, @default_play_duration_sec))
+      |> assign(:play_duration_sec, play_duration_sec)
       |> assign(:play_duration_options, @play_duration_options)
       |> assign(:countdown_sec, nil)
       |> assign(:show_reveal, false)
@@ -103,7 +109,10 @@ defmodule FiveSongsWeb.GameLive do
   defp playlist_screen(assigns) do
     ~H"""
     <div class="flex min-h-screen flex-col items-center justify-center px-4">
-      <a href={~p"/auth/logout"} class="absolute right-4 top-4 text-sm text-zinc-400 hover:text-white">Abmelden</a>
+      <div class="absolute right-4 top-4 flex gap-4">
+        <a href={~p"/settings"} class="text-sm text-zinc-400 hover:text-white">Einstellungen</a>
+        <a href={~p"/auth/logout"} class="text-sm text-zinc-400 hover:text-white">Abmelden</a>
+      </div>
       <div class="flex items-center gap-2">
         <h1 class="text-2xl font-bold">Playlist wählen</h1>
         <button
@@ -170,7 +179,10 @@ defmodule FiveSongsWeb.GameLive do
         >
           ← Zurück
         </button>
-        <a href={~p"/auth/logout"} class="text-sm text-zinc-400 hover:text-white">Abmelden</a>
+        <div class="flex gap-4">
+          <a href={~p"/settings"} class="text-sm text-zinc-400 hover:text-white">Einstellungen</a>
+          <a href={~p"/auth/logout"} class="text-sm text-zinc-400 hover:text-white">Abmelden</a>
+        </div>
       </div>
       <div
         :if={@game_phase == :countdown && @countdown_sec != nil}
@@ -364,7 +376,9 @@ defmodule FiveSongsWeb.GameLive do
           |> assign(:time_left_sec, duration)
           |> assign(:playback_started_timeout_ref, ref)
 
-        {:noreply, push_event(socket, "play_track", %{uri: socket.assigns.current_track.uri, token: socket.assigns.spotify_token})}
+        payload = %{uri: socket.assigns.current_track.uri, token: socket.assigns.spotify_token}
+payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :device_id, id), else: payload
+{:noreply, push_event(socket, "play_track", payload)}
       _ ->
         {:noreply, socket}
     end
