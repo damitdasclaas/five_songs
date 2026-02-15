@@ -112,6 +112,8 @@ defmodule FiveSongsWeb.GameLive do
         show_reveal={@show_reveal}
         time_left_sec={@time_left_sec}
         valid_tracks_count={available_tracks_count(@valid_tracks, @played_track_ids)}
+        played_count={length(@played_track_ids || [])}
+        total_count={length(@valid_tracks || [])}
         countdown_sec={@countdown_sec}
         play_duration_sec={@play_duration_sec}
       />
@@ -252,17 +254,38 @@ defmodule FiveSongsWeb.GameLive do
         >
           ← Zurück
         </button>
-        <div class="flex gap-4">
+        <div class="flex items-center gap-4">
+          <span class="text-xs tabular-nums text-zinc-500">{@played_count}/{@total_count} Songs</span>
           <a href={~p"/settings"} class="text-sm text-zinc-400 hover:text-white">Einstellungen</a>
           <a href={~p"/auth/logout"} class="text-sm text-zinc-400 hover:text-white">Abmelden</a>
         </div>
       </div>
+      <%!-- Idle: Warten auf "Nächste Runde" --%>
+      <div
+        :if={@game_phase == :idle}
+        class="flex flex-1 flex-col items-center justify-center bg-zinc-800 px-4"
+      >
+        <p class="text-xl text-zinc-400">Bereit für die nächste Runde?</p>
+      </div>
+      <%!-- Kategorie ausgelost → "Song abspielen" --%>
+      <div
+        :if={@game_phase == :category_picked && @current_category}
+        class="flex flex-1 flex-col items-center justify-center px-4 transition-colors"
+        style={"background-color: #{@current_category.color}"}
+      >
+        <p class="text-3xl font-bold text-white">{@current_category.label}</p>
+        <p class="mt-2 text-white/70">Kategorie dieser Runde</p>
+      </div>
+      <%!-- Countdown --%>
       <div
         :if={@game_phase == :countdown && @countdown_sec != nil}
-        class="flex flex-1 flex-col items-center justify-center bg-zinc-800"
+        class="flex flex-1 flex-col items-center justify-center"
+        style={"background-color: #{@current_category && @current_category.color || "#27272a"}"}
       >
-        <p class="text-8xl font-bold tabular-nums text-white">{@countdown_sec}</p>
+        <p class="text-sm font-medium text-white/70">{@current_category && @current_category.label}</p>
+        <p class="mt-2 text-8xl font-bold tabular-nums text-white">{@countdown_sec}</p>
       </div>
+      <%!-- Playing --%>
       <div
         :if={@game_phase == :playing && @current_category}
         class="flex flex-1 flex-col items-center justify-center transition-colors"
@@ -273,6 +296,7 @@ defmodule FiveSongsWeb.GameLive do
           {@time_left_sec}s
         </p>
       </div>
+      <%!-- Reveal: "Ergebnis anzeigen" --%>
       <div
         :if={@game_phase == :reveal && @reveal_data && !@show_reveal}
         class="flex flex-1 flex-col items-center justify-center bg-zinc-800 px-4"
@@ -285,6 +309,7 @@ defmodule FiveSongsWeb.GameLive do
           Ergebnis anzeigen
         </button>
       </div>
+      <%!-- Reveal: Ergebnis sichtbar --%>
       <div
         :if={@game_phase == :reveal && @reveal_data && @show_reveal}
         class="flex flex-1 flex-col items-center justify-center bg-zinc-800 px-4"
@@ -293,15 +318,26 @@ defmodule FiveSongsWeb.GameLive do
         <p class="mt-4 text-2xl font-semibold">{@reveal_data.title}</p>
         <p class="mt-2 text-xl text-zinc-400">{@reveal_data.artist}</p>
       </div>
+      <%!-- Bottom Bar --%>
       <div class="border-t border-zinc-700 p-4 space-y-3">
+        <%!-- "Nächste Runde" → Kategorie auslosen (idle oder nach reveal) --%>
         <button
-          :if={@game_phase == :idle || @game_phase == :reveal}
-          phx-click="next_song"
+          :if={@game_phase == :idle || (@game_phase == :reveal && @show_reveal)}
+          phx-click="next_round"
           class="w-full rounded-lg bg-[#1DB954] py-3 font-semibold text-white hover:bg-[#1ed760] disabled:opacity-50"
           disabled={@valid_tracks_count == 0}
         >
-          Nächster Song
+          Nächste Runde
         </button>
+        <%!-- "Song abspielen" → Track wählen und Countdown --%>
+        <button
+          :if={@game_phase == :category_picked}
+          phx-click="play_song"
+          class="w-full rounded-lg bg-[#1DB954] py-3 font-semibold text-white hover:bg-[#1ed760]"
+        >
+          Song abspielen
+        </button>
+        <%!-- Stopp während Playback --%>
         <button
           :if={@game_phase == :playing}
           phx-click="stop_round"
@@ -309,6 +345,10 @@ defmodule FiveSongsWeb.GameLive do
         >
           Stopp / Reveal
         </button>
+        <%!-- Hinweis: Alle Songs gespielt --%>
+        <p :if={@valid_tracks_count == 0 && (@game_phase == :idle || (@game_phase == :reveal && @show_reveal))} class="text-center text-sm text-amber-400">
+          Alle {@total_count} Songs dieser Playlist wurden gespielt!
+        </p>
       </div>
     </div>
     """
@@ -496,6 +536,17 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
   end
 
   def handle_event("show_playlists", _params, socket) do
+    # Bei "Neues Spiel" (running_game vorhanden) den alten Spielstand löschen
+    socket =
+      if socket.assigns.running_game do
+        socket
+        |> assign(:played_track_ids, [])
+        |> assign(:running_game, nil)
+        |> push_event("clear_game_state", %{})
+      else
+        socket
+      end
+
     socket = assign(socket, :show_start_menu, false)
     # Nur von der API laden, wenn wir noch keine Playlists haben (Cache/vorheriger Load)
     if is_nil(socket.assigns.playlists) do
@@ -588,29 +639,38 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
     {:noreply, socket}
   end
 
-  def handle_event("next_song", _params, socket) do
+  # Schritt 1: Kategorie auslosen (später mit Animation). Track wird noch NICHT gewählt.
+  def handle_event("next_round", _params, socket) do
+    category = FiveSongs.Categories.pick_random()
+
+    {:noreply,
+     socket
+     |> assign(:current_category, category)
+     |> assign(:current_track, nil)
+     |> assign(:reveal_data, nil)
+     |> assign(:show_reveal, false)
+     |> assign(:game_phase, :category_picked)}
+  end
+
+  # Schritt 2: Song zufällig wählen und Countdown starten
+  def handle_event("play_song", _params, socket) do
     valid_tracks = socket.assigns.valid_tracks
     played = socket.assigns.played_track_ids || []
-    played_set = MapSet.new(played)
-    available = Enum.reject(valid_tracks, fn t -> t.id in played_set end)
+    available = Enum.reject(valid_tracks, fn t -> t.id in MapSet.new(played) end)
 
-    cond do
-      available == [] ->
-        {:noreply,
-         put_flash(socket, :info, "Alle Songs dieser Playlist wurden bereits gespielt.")}
+    case available do
+      [] ->
+        {:noreply, socket}
 
-      true ->
+      _ ->
         track = FiveSongs.Tracks.pick_random_track(available)
-        category = FiveSongs.Categories.pick_random()
         new_played = [track.id | played]
         pl = socket.assigns.selected_playlist
+
         socket =
           socket
           |> assign(:current_track, track)
-          |> assign(:current_category, category)
           |> assign(:played_track_ids, new_played)
-          |> assign(:reveal_data, nil)
-          |> assign(:show_reveal, false)
           |> assign(:game_phase, :countdown)
           |> assign(:countdown_sec, 3)
           |> assign(:time_left_sec, nil)

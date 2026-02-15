@@ -59,6 +59,12 @@ const SpotifyPlayerHook = {
         }
       } catch (_) {}
     });
+    this.handleEvent("clear_game_state", () => {
+      try {
+        localStorage.removeItem(GAME_STATE_KEY);
+        localStorage.removeItem(CURRENT_GAME_KEY);
+      } catch (_) {}
+    });
     this.handleEvent("check_running_game", () => {
       try {
         const cur = localStorage.getItem(CURRENT_GAME_KEY);
