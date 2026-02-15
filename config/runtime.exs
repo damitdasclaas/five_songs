@@ -22,6 +22,8 @@ config :exspotify,
   client_id: System.get_env("SPOTIFY_CLIENT_ID"),
   client_secret: System.get_env("SPOTIFY_CLIENT_SECRET")
 
+if redirect_uri = System.get_env("SPOTIFY_REDIRECT_URI"), do: config :exspotify, redirect_uri: redirect_uri
+
 # config/runtime.exs is executed for all environments, including
 # during releases. It is executed after compilation and before the
 # system starts, so it is typically used to load production configuration
