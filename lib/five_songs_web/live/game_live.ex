@@ -390,32 +390,34 @@ defmodule FiveSongsWeb.GameLive do
           phx-click="stop_round"
           class="mt-8 w-full max-w-xs rounded-lg bg-white/20 py-3 font-semibold text-white backdrop-blur hover:bg-white/30"
         >
-          Stopp / Reveal
+          Stopp / Auflösen
         </button>
       </div>
-      <%!-- Reveal: "Ergebnis anzeigen" --%>
+      <%!-- Reveal: "Auflösen" --%>
       <div
         :if={@game_phase == :reveal && @reveal_data && !@show_reveal}
-        class="flex flex-1 flex-col items-center justify-center bg-zinc-800 px-6"
+        class="flex flex-1 flex-col items-center justify-center px-6"
+        style={"background-color: #{@current_category && @current_category.color || "#27272a"}"}
       >
-        <p :if={@current_category} class="text-sm font-medium text-zinc-500">{@current_category.label}</p>
-        <p class="mt-2 text-xl text-zinc-400">Runde vorbei.</p>
+        <p :if={@current_category} class="text-sm font-medium text-white/70">{@current_category.label}</p>
+        <p class="mt-2 text-xl text-white/80">Runde vorbei.</p>
         <button
           phx-click="show_reveal"
           class="mt-8 w-full max-w-xs rounded-lg bg-[#1DB954] py-3 font-semibold text-white hover:bg-[#1ed760]"
         >
-          Ergebnis anzeigen
+          Auflösen
         </button>
       </div>
       <%!-- Reveal: Ergebnis sichtbar --%>
       <div
         :if={@game_phase == :reveal && @reveal_data && @show_reveal}
-        class="flex flex-1 flex-col items-center justify-center bg-zinc-800 px-6"
+        class="flex flex-1 flex-col items-center justify-center px-6"
+        style={"background-color: #{@current_category && @current_category.color || "#27272a"}"}
       >
-        <p :if={@current_category} class="mb-4 text-sm font-medium text-zinc-500">{@current_category.label}</p>
+        <p :if={@current_category} class="mb-4 text-sm font-medium text-white/70">{@current_category.label}</p>
         <p class="text-5xl font-bold text-white">{@reveal_data.year}</p>
-        <p class="mt-4 text-2xl font-semibold">{@reveal_data.title}</p>
-        <p class="mt-1 text-xl text-zinc-400">{@reveal_data.artist}</p>
+        <p class="mt-4 text-2xl font-semibold text-white">{@reveal_data.title}</p>
+        <p class="mt-1 text-xl text-white/70">{@reveal_data.artist}</p>
         <img
           :if={@reveal_data[:cover_url]}
           src={@reveal_data.cover_url}
@@ -427,18 +429,18 @@ defmodule FiveSongsWeb.GameLive do
           href={@reveal_data.spotify_url}
           target="_blank"
           rel="noopener"
-          class="mt-4 text-sm text-[#1DB954] hover:text-[#1ed760]"
+          class="mt-4 text-sm text-white/60 hover:text-white"
         >
           In Spotify öffnen ↗
         </a>
         <button
           phx-click="next_round"
-          class="mt-8 w-full max-w-xs rounded-lg bg-[#1DB954] py-3 font-semibold text-white hover:bg-[#1ed760] disabled:opacity-50"
+          class="mt-8 w-full max-w-xs rounded-lg bg-white/20 py-3 font-semibold text-white backdrop-blur hover:bg-white/30 disabled:opacity-50"
           disabled={@valid_tracks_count == 0}
         >
           Nächste Runde
         </button>
-        <p :if={@valid_tracks_count == 0} class="mt-3 text-center text-sm text-amber-400">
+        <p :if={@valid_tracks_count == 0} class="mt-3 text-center text-sm text-amber-200">
           Alle {@total_count} Songs dieser Playlist wurden gespielt!
         </p>
       </div>
