@@ -1,11 +1,12 @@
 # FiveSongs
 
-To start your Phoenix server:
+## Starten (lokal)
 
-  * Run `mix setup` to install and setup dependencies
-  * Start Phoenix endpoint with `mix phx.server` or inside IEx with `iex -S mix phx.server`
+1. **Dependencies:** `mix setup` (einmalig)
+2. **Server starten:** `mix phx.server` oder mit IEx: `iex -S mix phx.server`
+3. Im Browser: [localhost:4000](http://localhost:4000)
 
-Now you can visit [`localhost:4000`](http://localhost:4000) from your browser.
+Spotify-Credentials kommen aus `.env` (siehe `.env.example`).
 
 ### Docker
 
@@ -25,6 +26,30 @@ docker run --rm -p 4000:4000 \
 ```
 
 Required env vars: `SECRET_KEY_BASE`, `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`. Optional: `PORT` (default 4000), `PHX_HOST`, `SPOTIFY_REDIRECT_URI` (e.g. `https://yourdomain.com/auth/spotify/callback`), `DNS_CLUSTER_QUERY`.
+
+### Fly.io (Deploy)
+
+1. **CLI installieren:** [fly.io/docs/hands-on/install-flyctl](https://fly.io/docs/hands-on/install-flyctl)  
+2. **Anmelden:** `fly auth login`  
+3. **App erstellen & deployen:**  
+   ```bash
+   fly launch --no-deploy
+   ```  
+   Wenn du den App-Namen änderst, in `fly.toml` `app` sowie `PHX_HOST` und `SPOTIFY_REDIRECT_URI` anpassen.  
+4. **Secrets setzen:**  
+   ```bash
+   fly secrets set SECRET_KEY_BASE="$(mix phx.gen.secret)"
+   fly secrets set SPOTIFY_CLIENT_ID="deine-client-id"
+   fly secrets set SPOTIFY_CLIENT_SECRET="dein-client-secret"
+   ```  
+5. **Deploy:**  
+   ```bash
+   fly deploy
+   ```  
+6. **Spotify:** In der [Spotify Developer Console](https://developer.spotify.com/dashboard) bei deiner App unter "Redirect URIs" eintragen:  
+   `https://<dein-app-name>.fly.dev/auth/spotify/callback`
+
+Danach: `https://<dein-app-name>.fly.dev`
 
 Ready to run in production? Please [check our deployment guides](https://hexdocs.pm/phoenix/deployment.html).
 

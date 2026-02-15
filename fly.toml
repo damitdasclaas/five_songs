@@ -1,0 +1,29 @@
+# fly.toml app configuration file generated for five-songs on 2026-02-15T11:07:27+01:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'five-songs'
+primary_region = 'fra'
+
+[build]
+  dockerfile = 'Dockerfile'
+
+[env]
+  PHX_HOST = '5songs.com'
+  PORT = '8080'
+  # Spotify OAuth – in der Spotify Developer Console beide URIs eintragen (5songs.de + 5songs.com)
+  SPOTIFY_REDIRECT_URI = 'https://5songs.com/auth/spotify/callback'
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = 'shared-cpu-1x'
+  memory = '512mb'
+  cpus = 1
+  memory_mb = 512
