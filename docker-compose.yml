@@ -4,7 +4,9 @@
 
 services:
   web:
-    build: .
+    build:
+      context: ..                     # Elternverzeichnis, damit Docker auch ../exspotify sieht
+      dockerfile: five_songs/Dockerfile
     image: five_songs
     ports:
       - "4001:4000"   # Host 4001 → Container 4000

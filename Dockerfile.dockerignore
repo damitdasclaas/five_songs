@@ -1,0 +1,27 @@
+# Build-Context ist das Elternverzeichnis (..) – nur five_songs + exspotify durchlassen
+*
+!five_songs/
+!exspotify/
+
+# Unnötiges aus five_songs ausschließen
+five_songs/.git
+five_songs/_build
+five_songs/deps
+five_songs/cover
+five_songs/doc
+five_songs/test
+five_songs/tmp
+five_songs/.elixir_ls
+five_songs/.env
+five_songs/.env.*
+five_songs/assets/node_modules
+five_songs/priv/static/assets
+five_songs/priv/static/cache_manifest.json
+
+# Unnötiges aus exspotify ausschließen
+exspotify/.git
+exspotify/_build
+exspotify/deps
+exspotify/test
+exspotify/doc
+exspotify/.elixir_ls

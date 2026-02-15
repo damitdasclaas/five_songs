@@ -342,6 +342,11 @@ defmodule FiveSongsWeb.GameLive do
       else
         {:error, %Exspotify.Error{type: :unauthorized}} ->
           {:noreply, redirect(socket, to: ~p"/auth/spotify/refresh")}
+        {:error, %Exspotify.Error{type: :rate_limited, details: details}} ->
+          {:noreply,
+           socket
+           |> assign(:playlists_loading, false)
+           |> assign(:playlists_error, rate_limit_message(details))}
         _ ->
           {:noreply,
            socket
@@ -375,6 +380,12 @@ defmodule FiveSongsWeb.GameLive do
 
       {:error, %Exspotify.Error{type: :unauthorized}} ->
         {:noreply, redirect(socket, to: ~p"/auth/spotify/refresh")}
+
+      {:error, %Exspotify.Error{type: :rate_limited, details: details}} ->
+        {:noreply,
+         socket
+         |> assign(:playlists_error, rate_limit_message(details))
+         |> assign(:tracks_loading, false)}
 
       {:error, reason} ->
         require Logger
@@ -456,7 +467,10 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
 
   def handle_event("show_playlists", _params, socket) do
     socket = assign(socket, :show_start_menu, false)
-    send(self(), :load_playlists)
+    # Nur von der API laden, wenn wir noch keine Playlists haben (Cache/vorheriger Load)
+    if is_nil(socket.assigns.playlists) do
+      send(self(), :load_playlists)
+    end
     {:noreply, socket}
   end
 
@@ -481,10 +495,10 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
   end
 
   def handle_event("back_to_start_menu", _params, socket) do
+    # Playlists NICHT löschen – wir haben sie schon, spart API-Requests beim nächsten Klick
     {:noreply,
      socket
      |> assign(:show_start_menu, true)
-     |> assign(:playlists, nil)
      |> assign(:selected_playlist, nil)
      |> assign(:playlists_loading, false)
      |> assign(:playlists_error, nil)
@@ -680,6 +694,19 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
     end
     assign(socket, :refresh_timer_ref, nil)
   end
+
+  defp rate_limit_message(%{retry_after: seconds}) when is_integer(seconds) and seconds > 0 do
+    minutes = div(seconds, 60)
+    rest_sec = rem(seconds, 60)
+    time =
+      cond do
+        minutes > 0 and rest_sec > 0 -> "#{minutes} Min. #{rest_sec} Sek."
+        minutes > 0 -> "#{minutes} Min."
+        true -> "#{seconds} Sek."
+      end
+    "Spotify Rate-Limit erreicht. Bitte #{time} warten und erneut versuchen."
+  end
+  defp rate_limit_message(_), do: "Spotify Rate-Limit erreicht. Bitte ein paar Minuten warten und erneut versuchen."
 
   defp pause_payload(socket) do
     base = %{token: socket.assigns.spotify_token}
