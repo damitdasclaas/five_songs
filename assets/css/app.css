@@ -3,3 +3,8 @@
 @import "tailwindcss/utilities";
 
 /* This file is for your main application CSS */
+
+@keyframes vignette-pulse {
+  0%, 100% { opacity: 0; }
+  50% { opacity: 1; }
+}

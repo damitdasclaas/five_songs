@@ -149,8 +149,8 @@ defmodule FiveSongsWeb.GameLive do
     ~H"""
     <div class="flex min-h-screen flex-col items-center justify-center px-4">
       <div class="absolute right-4 top-4">
-        <a href={~p"/auth/logout"} class="inline-flex items-center justify-center rounded-full bg-zinc-800/80 p-2.5 text-zinc-400 transition hover:bg-zinc-700 hover:text-white active:bg-zinc-600" title="Abmelden">
-          <.icon name="hero-arrow-right-start-on-rectangle" class="h-5 w-5" />
+        <a href={~p"/auth/logout"} class="inline-flex items-center justify-center rounded-full bg-zinc-800/80 p-3 text-zinc-400 transition hover:bg-zinc-700 hover:text-white active:bg-zinc-600" title="Abmelden">
+          <.icon name="hero-arrow-right-start-on-rectangle" class="h-6 w-6" />
         </a>
       </div>
       <h1 class="text-4xl font-bold tracking-tight">5songs</h1>
@@ -196,11 +196,11 @@ defmodule FiveSongsWeb.GameLive do
           <.icon name="hero-chevron-left" class="h-4 w-4" /> Menü
         </button>
         <div class="flex items-center gap-2">
-          <a href={~p"/settings"} class="inline-flex items-center justify-center rounded-full bg-zinc-800/80 p-2.5 text-zinc-400 transition hover:bg-zinc-700 hover:text-white active:bg-zinc-600" title="Einstellungen">
-            <.icon name="hero-cog-6-tooth" class="h-5 w-5" />
+          <a href={~p"/settings"} class="inline-flex items-center justify-center rounded-full bg-zinc-800/80 p-3 text-zinc-400 transition hover:bg-zinc-700 hover:text-white active:bg-zinc-600" title="Einstellungen">
+            <.icon name="hero-cog-6-tooth" class="h-6 w-6" />
           </a>
-          <a href={~p"/auth/logout"} class="inline-flex items-center justify-center rounded-full bg-zinc-800/80 p-2.5 text-zinc-400 transition hover:bg-zinc-700 hover:text-white active:bg-zinc-600" title="Abmelden">
-            <.icon name="hero-arrow-right-start-on-rectangle" class="h-5 w-5" />
+          <a href={~p"/auth/logout"} class="inline-flex items-center justify-center rounded-full bg-zinc-800/80 p-3 text-zinc-400 transition hover:bg-zinc-700 hover:text-white active:bg-zinc-600" title="Abmelden">
+            <.icon name="hero-arrow-right-start-on-rectangle" class="h-6 w-6" />
           </a>
         </div>
       </div>
@@ -267,8 +267,8 @@ defmodule FiveSongsWeb.GameLive do
         <button type="button" phx-click="back_to_playlists" class="inline-flex items-center gap-1 rounded-full bg-zinc-800/80 px-3 py-2 text-sm text-zinc-300 transition hover:bg-zinc-700 active:bg-zinc-600">
           <.icon name="hero-chevron-left" class="h-4 w-4" /> Playlists
         </button>
-        <a href={~p"/auth/logout"} class="inline-flex items-center justify-center rounded-full bg-zinc-800/80 p-2.5 text-zinc-400 transition hover:bg-zinc-700 hover:text-white active:bg-zinc-600" title="Abmelden">
-          <.icon name="hero-arrow-right-start-on-rectangle" class="h-5 w-5" />
+        <a href={~p"/auth/logout"} class="inline-flex items-center justify-center rounded-full bg-zinc-800/80 p-3 text-zinc-400 transition hover:bg-zinc-700 hover:text-white active:bg-zinc-600" title="Abmelden">
+          <.icon name="hero-arrow-right-start-on-rectangle" class="h-6 w-6" />
         </a>
       </div>
       <h1 class="text-2xl font-bold">{@selected_playlist.name}</h1>
@@ -361,13 +361,31 @@ defmodule FiveSongsWeb.GameLive do
       <%!-- Playing --%>
       <div
         :if={@game_phase == :playing && @current_category}
-        class="flex flex-1 flex-col items-center justify-center px-6 transition-colors"
+        class="relative flex flex-1 flex-col items-center justify-center overflow-hidden px-6 transition-colors"
         style={"background-color: #{@current_category.color}"}
       >
+        <div
+          :if={@time_left_sec != nil && @time_left_sec <= 10}
+          class="pointer-events-none absolute inset-0"
+          style={"border: 3px solid rgba(239, 68, 68, 0.95); box-shadow: inset 0 0 30px 10px rgba(239, 68, 68, 0.8), inset 0 0 80px 20px rgba(239, 68, 68, 0.25); animation: vignette-pulse #{vignette_pulse_speed(@time_left_sec)} ease-in-out infinite;"}
+        />
         <p class="text-2xl font-semibold text-white/90">{@current_category.label}</p>
-        <p :if={@time_left_sec != nil} class="mt-2 text-4xl font-bold tabular-nums text-white">
-          {@time_left_sec}s
+        <p :if={@time_left_sec != nil} class="mt-4 text-7xl font-bold tabular-nums text-white">
+          {@time_left_sec}<span class="text-4xl">s</span>
         </p>
+        <div :if={@time_left_sec != nil} class="mt-6 h-2 w-full max-w-xs overflow-hidden rounded-full bg-white/20">
+          <div
+            class={[
+              "h-full rounded-full transition-[width] duration-1000 ease-linear",
+              cond do
+                @time_left_sec <= 5 -> "bg-red-400"
+                @time_left_sec <= 15 -> "bg-amber-300"
+                true -> "bg-white/80"
+              end
+            ]}
+            style={"width: #{@time_left_sec / @play_duration_sec * 100}%"}
+          />
+        </div>
         <button
           phx-click="stop_round"
           class="mt-8 w-full max-w-xs rounded-lg bg-white/20 py-3 font-semibold text-white backdrop-blur hover:bg-white/30"
@@ -380,7 +398,8 @@ defmodule FiveSongsWeb.GameLive do
         :if={@game_phase == :reveal && @reveal_data && !@show_reveal}
         class="flex flex-1 flex-col items-center justify-center bg-zinc-800 px-6"
       >
-        <p class="text-xl text-zinc-400">Runde vorbei.</p>
+        <p :if={@current_category} class="text-sm font-medium text-zinc-500">{@current_category.label}</p>
+        <p class="mt-2 text-xl text-zinc-400">Runde vorbei.</p>
         <button
           phx-click="show_reveal"
           class="mt-8 w-full max-w-xs rounded-lg bg-[#1DB954] py-3 font-semibold text-white hover:bg-[#1ed760]"
@@ -393,6 +412,7 @@ defmodule FiveSongsWeb.GameLive do
         :if={@game_phase == :reveal && @reveal_data && @show_reveal}
         class="flex flex-1 flex-col items-center justify-center bg-zinc-800 px-6"
       >
+        <p :if={@current_category} class="mb-4 text-sm font-medium text-zinc-500">{@current_category.label}</p>
         <p class="text-5xl font-bold text-white">{@reveal_data.year}</p>
         <p class="mt-4 text-2xl font-semibold">{@reveal_data.title}</p>
         <p class="mt-1 text-xl text-zinc-400">{@reveal_data.artist}</p>
@@ -894,6 +914,13 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
     "Spotify Rate-Limit erreicht. Automatischer Retry in #{time}."
   end
   defp rate_limit_message(_), do: "Spotify Rate-Limit erreicht. Automatischer Retry in Kürze."
+
+  # Pulsgeschwindigkeit für die rote Vignette in den letzten 10 Sekunden.
+  # Je weniger Zeit, desto schneller blinkt es.
+  defp vignette_pulse_speed(sec) when sec <= 2, do: "0.25s"
+  defp vignette_pulse_speed(sec) when sec <= 5, do: "0.5s"
+  defp vignette_pulse_speed(sec) when sec <= 8, do: "0.8s"
+  defp vignette_pulse_speed(_sec), do: "1.2s"
 
   # Jahrspanne (min/max) aus den Album-Release-Dates der Tracks berechnen
   defp compute_year_range(tracks) when is_list(tracks) do
