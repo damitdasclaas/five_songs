@@ -17,6 +17,9 @@ defmodule FiveSongsWeb.Router do
   scope "/", FiveSongsWeb do
     pipe_through :browser
 
+    get "/impressum", PageController, :impressum
+    get "/rechtliches", PageController, :rechtliches
+
     get "/auth/spotify", AuthController, :spotify
     get "/auth/spotify/callback", AuthController, :spotify_callback
     get "/auth/spotify/refresh", AuthController, :refresh
