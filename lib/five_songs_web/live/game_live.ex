@@ -24,7 +24,10 @@ defmodule FiveSongsWeb.GameLive do
       |> assign(:playlists_error, nil)
       |> assign(:selected_playlist, nil)
       |> assign(:valid_tracks, [])
+      |> assign(:played_track_ids, [])
       |> assign(:tracks_loading, false)
+      |> assign(:show_start_menu, true)
+      |> assign(:running_game, nil)
       |> assign(:phase, nil)
       |> assign(:game_phase, :idle)
       |> assign(:current_track, nil)
@@ -41,7 +44,7 @@ defmodule FiveSongsWeb.GameLive do
 
     socket =
       if socket.assigns.phase == :choose_playlist and token do
-        schedule_token_refresh(socket)
+        schedule_token_refresh(socket) |> push_event("check_running_game", %{})
       else
         socket
       end
@@ -60,14 +63,39 @@ defmodule FiveSongsWeb.GameLive do
     assign(socket, :phase, phase)
   end
 
+  defp available_tracks_count(valid_tracks, played_ids) do
+    played_set = MapSet.new(played_ids || [])
+    Enum.count(valid_tracks || [], fn t -> t.id not in played_set end)
+  end
+
+  # Von API (Playlist-Struct): tracks.total
+  defp playlist_track_count(%{tracks: t}) when is_map(t) do
+    case t["total"] || Map.get(t, :total) do
+      n when is_integer(n) -> n
+      n when is_binary(n) -> case Integer.parse(n) do
+        {val, _} -> val
+        :error -> nil
+      end
+      _ -> nil
+    end
+  end
+  # Aus Cache (nach restore_playlists)
+  defp playlist_track_count(%{track_count: c}) when is_integer(c), do: c
+  defp playlist_track_count(%{"track_count" => c}) when is_integer(c), do: c
+  defp playlist_track_count(_), do: nil
+
   @impl true
   def render(assigns) do
     ~H"""
     <div id="game-root" class="min-h-screen bg-zinc-900 text-white" phx-hook="SpotifyPlayer" data-phase={@phase}>
       <.flash_group flash={@flash} />
       <.login_screen :if={@phase == :login} />
+      <.start_menu_screen
+        :if={@phase == :choose_playlist && @show_start_menu}
+        running_game={@running_game}
+      />
       <.playlist_screen
-        :if={@phase == :choose_playlist}
+        :if={@phase == :choose_playlist && !@show_start_menu}
         playlists={@playlists}
         playlists_loading={@playlists_loading}
         playlists_error={@playlists_error}
@@ -81,7 +109,7 @@ defmodule FiveSongsWeb.GameLive do
         reveal_data={@reveal_data}
         show_reveal={@show_reveal}
         time_left_sec={@time_left_sec}
-        valid_tracks_count={length(@valid_tracks)}
+        valid_tracks_count={available_tracks_count(@valid_tracks, @played_track_ids)}
         countdown_sec={@countdown_sec}
         play_duration_sec={@play_duration_sec}
       />
@@ -104,12 +132,56 @@ defmodule FiveSongsWeb.GameLive do
     """
   end
 
+  defp start_menu_screen(assigns) do
+    ~H"""
+    <div class="flex min-h-screen flex-col items-center justify-center px-4">
+      <div class="absolute right-4 top-4">
+        <a href={~p"/auth/logout"} class="text-sm text-zinc-400 hover:text-white">Abmelden</a>
+      </div>
+      <h1 class="text-4xl font-bold tracking-tight">5songs</h1>
+      <p class="mt-2 text-zinc-400">Playlist wählen und Songs erraten.</p>
+      <div class="mt-10 flex flex-col gap-4">
+        <button
+          :if={@running_game}
+          phx-click="continue_game"
+          phx-value-id={@running_game.id}
+          phx-value-name={@running_game.name}
+          type="button"
+          class="rounded-full bg-[#1DB954] px-8 py-4 text-lg font-semibold text-white transition hover:bg-[#1ed760]"
+        >
+          Weiterspielen
+        </button>
+        <button
+          phx-click="show_playlists"
+          type="button"
+          class={[
+            "rounded-full px-8 py-4 text-lg font-semibold transition",
+            @running_game && "border border-zinc-600 bg-transparent hover:bg-zinc-800" ||
+              "bg-[#1DB954] text-white hover:bg-[#1ed760]"
+          ]}
+        >
+          {@running_game && "Neues Spiel" || "Spiel starten"}
+        </button>
+        <a
+          href={~p"/settings"}
+          class="rounded-full border border-zinc-600 bg-transparent px-8 py-4 text-center text-lg font-semibold text-white transition hover:bg-zinc-800"
+        >
+          Einstellungen
+        </a>
+      </div>
+    </div>
+    """
+  end
+
   defp playlist_screen(assigns) do
     ~H"""
     <div class="flex min-h-screen flex-col items-center justify-center px-4">
-      <div class="absolute right-4 top-4 flex gap-4">
-        <a href={~p"/settings"} class="text-sm text-zinc-400 hover:text-white">Einstellungen</a>
-        <a href={~p"/auth/logout"} class="text-sm text-zinc-400 hover:text-white">Abmelden</a>
+      <div class="absolute left-4 right-4 top-4 flex justify-between">
+        <button type="button" phx-click="back_to_start_menu" class="text-sm text-zinc-400 hover:text-white">← Menü</button>
+        <div class="flex gap-4">
+          <a href={~p"/settings"} class="text-sm text-zinc-400 hover:text-white">Einstellungen</a>
+          <a href={~p"/auth/logout"} class="text-sm text-zinc-400 hover:text-white">Abmelden</a>
+        </div>
       </div>
       <div class="flex items-center gap-2">
         <h1 class="text-2xl font-bold">Playlist wählen</h1>
@@ -155,7 +227,8 @@ defmodule FiveSongsWeb.GameLive do
             phx-value-name={playlist.name}
             class="w-full rounded-lg bg-zinc-800 px-4 py-3 text-left hover:bg-zinc-700"
           >
-            {playlist.name}
+            <span>{playlist.name}</span>
+            <span :if={playlist_track_count(playlist)} class="ml-2 text-zinc-400">({playlist_track_count(playlist)} Songs)</span>
           </button>
         </li>
       </ul>
@@ -247,8 +320,19 @@ defmodule FiveSongsWeb.GameLive do
       with {:ok, me} <- Exspotify.Users.get_current_user_profile(token),
            {:ok, paging} <- Exspotify.Playlists.get_current_users_playlists(token, limit: 50) do
         all = paging.items || []
-        playlists = Enum.filter(all, fn p -> p.owner && p.owner.id == me.id end)
-        cache = Enum.map(playlists, fn p -> %{"id" => p.id, "name" => p.name} end)
+        owned = Enum.filter(all, fn p -> p.owner && p.owner.id == me.id end)
+        # Immer als Liste von Maps (id, name, track_count), damit Anzeige und Cache einheitlich sind
+        playlists =
+          Enum.map(owned, fn p ->
+            %{id: p.id, name: p.name, track_count: playlist_track_count(p)}
+          end)
+
+        cache =
+          Enum.map(playlists, fn pm ->
+            m = %{"id" => pm.id, "name" => pm.name}
+            if is_integer(pm.track_count), do: Map.put(m, "track_count", pm.track_count), else: m
+          end)
+
         {:noreply,
          socket
          |> assign(:playlists, playlists)
@@ -286,7 +370,8 @@ defmodule FiveSongsWeb.GameLive do
          |> assign(:playlists_error, nil)
          |> assign(:tracks_loading, false)
          |> cancel_refresh_timer()
-         |> compute_phase()}
+         |> compute_phase()
+         |> push_event("request_saved_state", %{playlist_id: playlist_id})}
 
       {:error, %Exspotify.Error{type: :unauthorized}} ->
         {:noreply, redirect(socket, to: ~p"/auth/spotify/refresh")}
@@ -369,6 +454,44 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
     end
   end
 
+  def handle_event("show_playlists", _params, socket) do
+    socket = assign(socket, :show_start_menu, false)
+    send(self(), :load_playlists)
+    {:noreply, socket}
+  end
+
+  def handle_event("running_game_available", %{"playlist_id" => id, "playlist_name" => name}, socket)
+      when is_binary(id) and id != "" do
+    {:noreply, assign(socket, :running_game, %{id: id, name: name})}
+  end
+
+  def handle_event("running_game_available", _params, socket) do
+    {:noreply, assign(socket, :running_game, nil)}
+  end
+
+  def handle_event("continue_game", %{"id" => id, "name" => name}, socket) do
+    socket =
+      socket
+      |> assign(:tracks_loading, true)
+      |> assign(:playlists_error, nil)
+      |> assign(:selected_playlist, %{id: id, name: name})
+
+    send(self(), {:load_playlist_tracks, id})
+    {:noreply, socket}
+  end
+
+  def handle_event("back_to_start_menu", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_start_menu, true)
+     |> assign(:playlists, nil)
+     |> assign(:selected_playlist, nil)
+     |> assign(:playlists_loading, false)
+     |> assign(:playlists_error, nil)
+     |> cancel_refresh_timer()
+     |> push_event("check_running_game", %{})}
+  end
+
   @impl true
   def handle_event("select_playlist", %{"id" => id, "name" => name}, socket) do
     socket =
@@ -393,7 +516,15 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
 
   def handle_event("restore_playlists", %{"playlists" => list}, socket) do
     if socket.assigns.phase == :choose_playlist and is_list(list) and list != [] do
-      playlists = Enum.map(list, fn p -> %{id: p["id"], name: p["name"]} end)
+      playlists =
+        Enum.map(list, fn p ->
+          base = %{id: p["id"], name: p["name"]}
+          case p["track_count"] do
+            c when is_integer(c) -> Map.put(base, :track_count, c)
+            _ -> base
+          end
+        end)
+
       {:noreply, assign(socket, :playlists, playlists)}
     else
       {:noreply, socket}
@@ -413,23 +544,38 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
 
   def handle_event("next_song", _params, socket) do
     valid_tracks = socket.assigns.valid_tracks
-    if valid_tracks == [] do
-      {:noreply, socket}
-    else
-      track = FiveSongs.Tracks.pick_random_track(valid_tracks)
-      category = FiveSongs.Categories.pick_random()
-      socket =
-        socket
-        |> assign(:current_track, track)
-        |> assign(:current_category, category)
-        |> assign(:reveal_data, nil)
-        |> assign(:show_reveal, false)
-        |> assign(:game_phase, :countdown)
-        |> assign(:countdown_sec, 3)
-        |> assign(:time_left_sec, nil)
+    played = socket.assigns.played_track_ids || []
+    played_set = MapSet.new(played)
+    available = Enum.reject(valid_tracks, fn t -> t.id in played_set end)
 
-      Process.send_after(self(), :countdown_tick, 1000)
-      {:noreply, socket}
+    cond do
+      available == [] ->
+        {:noreply,
+         put_flash(socket, :info, "Alle Songs dieser Playlist wurden bereits gespielt.")}
+
+      true ->
+        track = FiveSongs.Tracks.pick_random_track(available)
+        category = FiveSongs.Categories.pick_random()
+        new_played = [track.id | played]
+        pl = socket.assigns.selected_playlist
+        socket =
+          socket
+          |> assign(:current_track, track)
+          |> assign(:current_category, category)
+          |> assign(:played_track_ids, new_played)
+          |> assign(:reveal_data, nil)
+          |> assign(:show_reveal, false)
+          |> assign(:game_phase, :countdown)
+          |> assign(:countdown_sec, 3)
+          |> assign(:time_left_sec, nil)
+          |> push_event("save_game_state", %{
+            playlist_id: pl.id,
+            playlist_name: pl.name,
+            played_track_ids: new_played
+          })
+
+        Process.send_after(self(), :countdown_tick, 1000)
+        {:noreply, socket}
     end
   end
 
@@ -450,6 +596,11 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
     {:noreply, assign(socket, :show_reveal, true)}
   end
 
+  def handle_event("restore_state", %{"played_track_ids" => ids}, socket) do
+    list = if is_list(ids), do: ids, else: []
+    {:noreply, assign(socket, :played_track_ids, list)}
+  end
+
   def handle_event("back_to_playlists", _params, socket) do
     socket =
       socket
@@ -458,6 +609,7 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
       |> cancel_refresh_timer()
       |> assign(:selected_playlist, nil)
       |> assign(:valid_tracks, [])
+      |> assign(:played_track_ids, [])
       |> assign(:tracks_loading, false)
       |> assign(:game_phase, :idle)
       |> assign(:current_track, nil)

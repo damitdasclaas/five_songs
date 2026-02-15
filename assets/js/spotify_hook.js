@@ -1,4 +1,6 @@
 const PLAYLIST_CACHE_KEY = "five_songs_playlists";
+const GAME_STATE_KEY = "five_songs_game_state";
+const CURRENT_GAME_KEY = "five_songs_current_game";
 
 const SpotifyPlayerHook = {
   player: null,
@@ -32,6 +34,49 @@ const SpotifyPlayerHook = {
     this.handleEvent("cache_playlists", ({ playlists }) => {
       if (playlists && playlists.length) {
         try { sessionStorage.setItem(PLAYLIST_CACHE_KEY, JSON.stringify(playlists)); } catch (_) {}
+      }
+    });
+    this.handleEvent("request_saved_state", ({ playlist_id }) => {
+      try {
+        const raw = localStorage.getItem(GAME_STATE_KEY);
+        const all = raw ? JSON.parse(raw) : {};
+        const state = all[playlist_id];
+        const played = state?.played_track_ids;
+        if (Array.isArray(played) && played.length) {
+          this.pushEvent("restore_state", { played_track_ids: played });
+        }
+      } catch (_) {}
+    });
+    this.handleEvent("save_game_state", ({ playlist_id, playlist_name, played_track_ids }) => {
+      try {
+        const raw = localStorage.getItem(GAME_STATE_KEY);
+        const all = raw ? JSON.parse(raw) : {};
+        all[playlist_id] = { playlist_name, played_track_ids: played_track_ids || [] };
+        localStorage.setItem(GAME_STATE_KEY, JSON.stringify(all));
+        if (playlist_id && (played_track_ids?.length ?? 0) > 0) {
+          localStorage.setItem(CURRENT_GAME_KEY, JSON.stringify({ playlist_id, playlist_name }));
+        }
+      } catch (_) {}
+    });
+    this.handleEvent("check_running_game", () => {
+      try {
+        const cur = localStorage.getItem(CURRENT_GAME_KEY);
+        if (!cur) {
+          this.pushEvent("running_game_available", {});
+          return;
+        }
+        const { playlist_id, playlist_name } = JSON.parse(cur);
+        const raw = localStorage.getItem(GAME_STATE_KEY);
+        const all = raw ? JSON.parse(raw) : {};
+        const state = all[playlist_id];
+        const played = state?.played_track_ids;
+        if (playlist_id && Array.isArray(played) && played.length > 0) {
+          this.pushEvent("running_game_available", { playlist_id, playlist_name });
+        } else {
+          this.pushEvent("running_game_available", {});
+        }
+      } catch (_) {
+        this.pushEvent("running_game_available", {});
       }
     });
     try {
