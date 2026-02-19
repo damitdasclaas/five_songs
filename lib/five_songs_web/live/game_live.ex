@@ -2,7 +2,7 @@ defmodule FiveSongsWeb.GameLive do
   use FiveSongsWeb, :live_view
 
   @play_duration_options [30, 45, 60, 75, 90]
-  @default_play_duration_sec 60
+  @default_play_duration_sec 45
   @max_auto_retry_sec 300
 
   @impl true
@@ -366,11 +366,6 @@ defmodule FiveSongsWeb.GameLive do
         class="relative flex flex-1 flex-col items-center justify-center overflow-hidden px-6 transition-colors"
         style={"background-color: #{@current_category.color}"}
       >
-        <div
-          :if={@time_left_sec != nil && @time_left_sec <= 10}
-          class="pointer-events-none absolute inset-0"
-          style={"border: 3px solid rgba(239, 68, 68, 0.95); box-shadow: inset 0 0 30px 10px rgba(239, 68, 68, 0.8), inset 0 0 80px 20px rgba(239, 68, 68, 0.25); animation: vignette-pulse #{vignette_pulse_speed(@time_left_sec)} ease-in-out infinite;"}
-        />
         <p class="text-2xl font-semibold text-white/90">{@current_category.label}</p>
         <p :if={@time_left_sec != nil} class="mt-4 text-7xl font-bold tabular-nums text-white">
           {@time_left_sec}<span class="text-4xl">s</span>
@@ -941,13 +936,6 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
     end
   end
   defp rate_limit_message(_), do: "Spotify Rate-Limit erreicht. Automatischer Retry in Kürze."
-
-  # Pulsgeschwindigkeit für die rote Vignette in den letzten 10 Sekunden.
-  # Je weniger Zeit, desto schneller blinkt es.
-  defp vignette_pulse_speed(sec) when sec <= 2, do: "0.25s"
-  defp vignette_pulse_speed(sec) when sec <= 5, do: "0.5s"
-  defp vignette_pulse_speed(sec) when sec <= 8, do: "0.8s"
-  defp vignette_pulse_speed(_sec), do: "1.2s"
 
   # Jahrspanne (min/max) aus den Album-Release-Dates der Tracks berechnen
   defp compute_year_range(tracks) when is_list(tracks) do
