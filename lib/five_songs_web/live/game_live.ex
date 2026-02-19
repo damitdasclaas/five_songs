@@ -421,15 +421,26 @@ defmodule FiveSongsWeb.GameLive do
           alt="Album Cover"
           class="mt-5 h-20 w-20 rounded shadow-md"
         />
-        <a
-          :if={@reveal_data[:spotify_url]}
-          href={@reveal_data.spotify_url}
-          target="_blank"
-          rel="noopener"
-          class="mt-4 text-sm text-white/60 hover:text-white"
-        >
-          In Spotify öffnen ↗
-        </a>
+        <div class="mt-4 flex flex-wrap items-center justify-center gap-4 text-sm">
+          <a
+            :if={@reveal_data[:spotify_url]}
+            href={@reveal_data.spotify_url}
+            target="_blank"
+            rel="noopener"
+            class="text-white/60 hover:text-white"
+          >
+            In Spotify öffnen ↗
+          </a>
+          <a
+            href={"https://www.google.com/search?q=" <> URI.encode_www_form("#{@reveal_data.artist} #{@reveal_data.title} Veröffentlichungsdatum")}
+            target="_blank"
+            rel="noopener"
+            class="text-white/60 hover:text-white"
+            title="Release-Jahr bei Google prüfen"
+          >
+            Release-Jahr prüfen ↗
+          </a>
+        </div>
         <button
           phx-click="next_round"
           class="mt-8 w-full max-w-xs rounded-lg bg-white/20 py-3 font-semibold text-white backdrop-blur hover:bg-white/30 disabled:opacity-50"
