@@ -8,3 +8,9 @@
   0%, 100% { opacity: 0; }
   50% { opacity: 1; }
 }
+
+/* Smoother focus for keyboard nav */
+a:focus-visible,
+button:focus-visible {
+  @apply outline-none ring-2 ring-[#1DB954] ring-offset-2 ring-offset-zinc-900;
+}

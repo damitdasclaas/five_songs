@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="[scrollbar-gutter:stable]">
+<html lang="de" class="[scrollbar-gutter:stable]">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -7,19 +7,22 @@
     <.live_title default="5songs">
       {assigns[:page_title]}
     </.live_title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Bruno+Ace+SC&family=Modak&display=swap" rel="stylesheet" />
     <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
     <script defer phx-track-static type="text/javascript" src={~p"/assets/app.js"}></script>
     <script src="https://sdk.scdn.co/spotify-player.js"></script>
   </head>
-  <body class="bg-zinc-900 flex flex-col min-h-screen">
+  <body class="flex min-h-screen flex-col bg-zinc-900 text-zinc-100">
     <div class="flex-1">
       {@inner_content}
     </div>
-    <footer class="mt-auto border-t border-zinc-700/50 py-3 px-4">
-      <div class="mx-auto flex max-w-4xl flex-wrap items-center justify-center gap-x-4 gap-y-1 text-center text-sm text-zinc-500">
-        <a href={~p"/impressum"} class="hover:text-zinc-300">Impressum</a>
-        <span aria-hidden="true">·</span>
-        <a href={~p"/rechtliches"} class="hover:text-zinc-300">Rechtliche Hinweise</a>
+    <footer class="mt-auto border-t border-zinc-700/60 bg-zinc-900/95 py-4 px-4 backdrop-blur-sm">
+      <div class="mx-auto flex max-w-4xl flex-wrap items-center justify-center gap-x-5 gap-y-1 text-center text-sm text-zinc-500">
+        <a href={~p"/impressum"} class="transition hover:text-zinc-300">Impressum</a>
+        <span aria-hidden="true" class="text-zinc-600">·</span>
+        <a href={~p"/rechtliches"} class="transition hover:text-zinc-300">Rechtliche Hinweise</a>
       </div>
     </footer>
   </body>

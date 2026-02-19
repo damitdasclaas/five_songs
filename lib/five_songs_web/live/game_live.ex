@@ -94,7 +94,7 @@ defmodule FiveSongsWeb.GameLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div id="game-root" class="min-h-screen bg-zinc-900 text-white" phx-hook="SpotifyPlayer" data-phase={@phase}>
+    <div id="game-root" class="min-h-screen bg-gradient-to-b from-zinc-900 to-zinc-800/90 text-white" phx-hook="SpotifyPlayer" data-phase={@phase}>
       <.flash_group flash={@flash} />
       <.login_screen :if={@phase == :login} />
       <.start_menu_screen
@@ -134,12 +134,12 @@ defmodule FiveSongsWeb.GameLive do
 
   defp login_screen(assigns) do
     ~H"""
-    <div class="flex min-h-screen flex-col items-center justify-center px-4">
-      <h1 class="text-4xl font-bold tracking-tight">5songs</h1>
-      <p class="mt-4 text-zinc-400">Mit Spotify anmelden, Playlist wählen, loslegen.</p>
+    <div class="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-zinc-900 via-zinc-900 to-zinc-800/80 px-4">
+      <img src="/images/5songs.svg" alt="5songs" class="h-28 w-auto drop-shadow-lg sm:h-32" />
+      <p class="mt-6 text-zinc-400">Mit Spotify anmelden, Playlist wählen, loslegen.</p>
       <a
         href={~p"/auth/spotify"}
-        class="mt-8 inline-flex items-center gap-2 rounded-full bg-[#1DB954] px-6 py-3 font-semibold text-white transition hover:bg-[#1ed760]"
+        class="mt-8 inline-flex items-center gap-2 rounded-full bg-[#1DB954] px-8 py-3.5 font-semibold text-white shadow-lg shadow-[#1DB954]/25 transition hover:bg-[#1ed760] hover:shadow-[#1ed760]/30 hover:scale-[1.02] active:scale-[0.98]"
       >
         Mit Spotify anmelden
       </a>
@@ -149,22 +149,22 @@ defmodule FiveSongsWeb.GameLive do
 
   defp start_menu_screen(assigns) do
     ~H"""
-    <div class="flex min-h-screen flex-col items-center justify-center px-4">
+    <div class="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-zinc-900 via-zinc-900 to-zinc-800/80 px-4">
       <div class="absolute right-4 top-4">
         <a href={~p"/auth/logout"} class="inline-flex items-center justify-center rounded-full bg-zinc-800/80 p-3 text-zinc-400 transition hover:bg-zinc-700 hover:text-white active:bg-zinc-600" title="Abmelden">
           <.icon name="hero-arrow-right-start-on-rectangle" class="h-6 w-6" />
         </a>
       </div>
-      <h1 class="text-4xl font-bold tracking-tight">5songs</h1>
-      <p class="mt-2 text-zinc-400">Playlist wählen und Songs erraten.</p>
-      <div class="mt-10 flex flex-col gap-4">
+      <img src="/images/5songs.svg" alt="5songs" class="h-28 w-auto drop-shadow-lg sm:h-32" />
+      <p class="mt-4 text-zinc-400">Playlist wählen und Songs erraten.</p>
+      <div class="mt-10 flex w-full max-w-xs flex-col gap-3">
         <button
           :if={@running_game}
           phx-click="continue_game"
           phx-value-id={@running_game.id}
           phx-value-name={@running_game.name}
           type="button"
-          class="rounded-full bg-[#1DB954] px-8 py-4 text-lg font-semibold text-white transition hover:bg-[#1ed760]"
+          class="rounded-full bg-[#1DB954] px-8 py-4 text-lg font-semibold text-white shadow-lg shadow-[#1DB954]/25 transition hover:bg-[#1ed760] hover:shadow-[#1ed760]/30 hover:scale-[1.02] active:scale-[0.98]"
         >
           Weiterspielen
         </button>
@@ -173,15 +173,15 @@ defmodule FiveSongsWeb.GameLive do
           type="button"
           class={[
             "rounded-full px-8 py-4 text-lg font-semibold transition",
-            @running_game && "border border-zinc-600 bg-transparent hover:bg-zinc-800" ||
-              "bg-[#1DB954] text-white hover:bg-[#1ed760]"
+            @running_game && "border border-zinc-600 bg-zinc-800/50 hover:bg-zinc-800 hover:border-zinc-500" ||
+              "bg-[#1DB954] text-white shadow-lg shadow-[#1DB954]/25 hover:bg-[#1ed760] hover:shadow-[#1ed760]/30 hover:scale-[1.02] active:scale-[0.98]"
           ]}
         >
           {@running_game && "Neues Spiel" || "Spiel starten"}
         </button>
         <a
           href={~p"/settings"}
-          class="rounded-full border border-zinc-600 bg-transparent px-8 py-4 text-center text-lg font-semibold text-white transition hover:bg-zinc-800"
+          class="rounded-full border border-zinc-600 bg-zinc-800/50 px-8 py-4 text-center text-lg font-semibold text-white transition hover:bg-zinc-800 hover:border-zinc-500"
         >
           Einstellungen
         </a>
@@ -192,7 +192,7 @@ defmodule FiveSongsWeb.GameLive do
 
   defp playlist_screen(assigns) do
     ~H"""
-    <div class="flex min-h-screen flex-col items-center justify-center px-4">
+    <div class="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-zinc-900 via-zinc-900 to-zinc-800/80 px-4">
       <div class="absolute left-4 right-4 top-4 flex items-center justify-between">
         <button type="button" phx-click="back_to_start_menu" class="inline-flex items-center gap-1 rounded-full bg-zinc-800/80 px-3 py-2 text-sm text-zinc-300 transition hover:bg-zinc-700 active:bg-zinc-600">
           <.icon name="hero-chevron-left" class="h-4 w-4" /> Menü
@@ -241,7 +241,7 @@ defmodule FiveSongsWeb.GameLive do
           Erneut bei Spotify anmelden
         </a>
       </div>
-      <div :if={@playlists && !@playlists_loading} class="mt-6 w-full max-w-md max-h-[60vh] overflow-y-auto rounded-xl border border-zinc-700">
+      <div :if={@playlists && !@playlists_loading} class="mt-6 w-full max-w-md max-h-[60vh] overflow-y-auto rounded-2xl border border-zinc-600/80 bg-zinc-800/40 shadow-xl shadow-black/20">
         <ul class="divide-y divide-zinc-700">
           <li :for={playlist <- @playlists}>
             <button
@@ -264,7 +264,7 @@ defmodule FiveSongsWeb.GameLive do
 
   defp playlist_detail_screen(assigns) do
     ~H"""
-    <div class="flex min-h-screen flex-col items-center justify-center px-4">
+    <div class="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-zinc-900 via-zinc-900 to-zinc-800/80 px-4">
       <div class="absolute left-4 right-4 top-4 flex items-center justify-between">
         <button type="button" phx-click="back_to_playlists" class="inline-flex items-center gap-1 rounded-full bg-zinc-800/80 px-3 py-2 text-sm text-zinc-300 transition hover:bg-zinc-700 active:bg-zinc-600">
           <.icon name="hero-chevron-left" class="h-4 w-4" /> Playlists
@@ -291,17 +291,17 @@ defmodule FiveSongsWeb.GameLive do
         <p class="text-lg text-zinc-300">{@total_count} Songs</p>
         <p :if={@year_range} class="text-zinc-500">{elem(@year_range, 0)}–{elem(@year_range, 1)}</p>
       </div>
-      <div :if={!@tracks_loading} class="mt-8 flex flex-col gap-3">
+      <div :if={!@tracks_loading} class="mt-8 flex w-full max-w-xs flex-col gap-3">
         <button
           :if={!@playlists_error && @total_count > 0}
           phx-click="start_playlist"
-          class="rounded-full bg-[#1DB954] px-8 py-4 text-lg font-semibold text-white transition hover:bg-[#1ed760]"
+          class="rounded-full bg-[#1DB954] px-8 py-4 text-lg font-semibold text-white shadow-lg shadow-[#1DB954]/25 transition hover:bg-[#1ed760] hover:shadow-[#1ed760]/30 hover:scale-[1.02] active:scale-[0.98]"
         >
           Diese Playlist spielen
         </button>
         <button
           phx-click="back_to_playlists"
-          class="rounded-full border border-zinc-600 bg-transparent px-8 py-4 text-lg font-semibold text-white transition hover:bg-zinc-800"
+          class="rounded-full border border-zinc-600 bg-zinc-800/50 px-8 py-4 text-lg font-semibold text-white transition hover:bg-zinc-800 hover:border-zinc-500"
         >
           Andere Playlist wählen
         </button>
