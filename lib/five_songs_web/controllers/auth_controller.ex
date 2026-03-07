@@ -61,9 +61,19 @@ defmodule FiveSongsWeb.AuthController do
   end
 
   def spotify_callback(conn, %{"code" => code, "state" => state}) do
-    if get_session(conn, :spotify_state) != state do
+    stored_state = get_session(conn, :spotify_state)
+    if stored_state != state do
+      # Session state is missing or different when host at callback differs from host at login
+      # (e.g. user opened app via fly.dev or www, but Spotify redirects to 5songs.com)
+      message =
+        if is_nil(stored_state) do
+          "Anmeldung fehlgeschlagen: Session verloren. Bitte die App direkt unter https://5songs.com öffnen und erneut versuchen."
+        else
+          "Invalid state. Please try again."
+        end
+
       conn
-      |> put_flash(:error, "Invalid state. Please try again.")
+      |> put_flash(:error, message)
       |> redirect(to: ~p"/")
     else
       conn = delete_session(conn, :spotify_state)
