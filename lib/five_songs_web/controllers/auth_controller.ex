@@ -1,5 +1,6 @@
 defmodule FiveSongsWeb.AuthController do
   use FiveSongsWeb, :controller
+  require Logger
 
   def refresh(conn, _params) do
     case get_session(conn, :spotify_refresh_token) do
@@ -48,8 +49,17 @@ defmodule FiveSongsWeb.AuthController do
   end
 
   def spotify(conn, _params) do
-    state = Base.encode64(:crypto.strong_rand_bytes(16))
+    state = Base.url_encode64(:crypto.strong_rand_bytes(16), padding: false)
     conn = put_session(conn, :spotify_state, state)
+
+    conn =
+      put_resp_cookie(conn, "spotify_oauth_state", state,
+        max_age: 600,
+        path: "/",
+        same_site: "Lax",
+        http_only: true,
+        secure: conn.scheme == :https
+      )
 
     {:ok, uri} =
       Exspotify.Auth.build_authorization_url(
@@ -57,45 +67,96 @@ defmodule FiveSongsWeb.AuthController do
         state
       )
 
-    redirect(conn, external: URI.to_string(uri))
+    authorize_url = URI.to_string(uri)
+    Logger.info("OAuth start: state=#{String.slice(state, 0, 8)}… host=#{conn.host} scheme=#{conn.scheme} url_has_state=#{String.contains?(authorize_url, "state=")}")
+    redirect(conn, external: authorize_url)
   end
 
-  def spotify_callback(conn, %{"code" => code, "state" => state}) do
-    stored_state = get_session(conn, :spotify_state)
-    if stored_state != state do
-      # Session state is missing or different when host at callback differs from host at login
-      # (e.g. user opened app via fly.dev or www, but Spotify redirects to 5songs.com)
-      message =
-        if is_nil(stored_state) do
-          "Anmeldung fehlgeschlagen: Session verloren. Bitte die App direkt unter https://5songs.com öffnen und erneut versuchen."
-        else
-          "Invalid state. Please try again."
-        end
+  def spotify_callback(conn, params) do
+    conn = Plug.Conn.fetch_cookies(conn)
 
-      conn
-      |> put_flash(:error, message)
-      |> redirect(to: ~p"/")
-    else
-      conn = delete_session(conn, :spotify_state)
+    url_state = params["state"]
+    session_state = get_session(conn, :spotify_state)
+    cookie_state = conn.req_cookies["spotify_oauth_state"]
+    stored_state = session_state || cookie_state
+    code = params["code"]
+    error = params["error"]
 
-      case Exspotify.Auth.exchange_code_for_token(code) do
-        {:ok, %{"access_token" => access_token, "refresh_token" => refresh_token}} ->
-          conn
-          |> put_session(:spotify_access_token, access_token)
-          |> put_session(:spotify_refresh_token, refresh_token)
-          |> redirect(to: ~p"/")
+    cookie_header = Plug.Conn.get_req_header(conn, "cookie") |> Enum.join("; ")
+    has_session_cookie = String.contains?(cookie_header, "_five_songs_key")
+    has_state_cookie = String.contains?(cookie_header, "spotify_oauth_state")
 
-        {:error, _reason} ->
-          conn
-          |> put_flash(:error, "Spotify login failed. Please try again.")
-          |> redirect(to: ~p"/")
-      end
+    Logger.warning("""
+    OAuth callback debug:
+      host=#{conn.host} scheme=#{conn.scheme}
+      has_code=#{not is_nil(code)} has_url_state=#{not is_nil(url_state)} has_error=#{not is_nil(error)}
+      session_state=#{inspect(session_state)}
+      cookie_state=#{inspect(cookie_state)}
+      url_state=#{inspect(url_state)}
+      match=#{stored_state == url_state}
+      has_session_cookie=#{has_session_cookie} has_state_cookie=#{has_state_cookie}
+    """)
+
+    cond do
+      # Spotify-Fehler (z.B. Nutzer hat abgelehnt)
+      is_binary(error) ->
+        conn
+        |> delete_session(:spotify_state)
+        |> delete_resp_cookie("spotify_oauth_state", path: "/")
+        |> put_flash(:error, if(error == "access_denied", do: "Anmeldung abgebrochen.", else: "Spotify-Fehler: #{error}."))
+        |> redirect(to: ~p"/")
+
+      # Kein Code von Spotify
+      !is_binary(code) or code == "" ->
+        conn
+        |> put_flash(:error, "Kein Code von Spotify erhalten.")
+        |> redirect(to: ~p"/")
+
+      # Code vorhanden + State stimmt überein (Session oder Cookie)
+      is_binary(url_state) and stored_state == url_state ->
+        do_token_exchange(conn, code)
+
+      # Code vorhanden + KEIN State in URL, aber State im Cookie/Session → akzeptieren
+      is_nil(url_state) and not is_nil(stored_state) ->
+        Logger.warning("OAuth: state missing from URL but found in cookie/session – accepting")
+        do_token_exchange(conn, code)
+
+      # State Mismatch oder kein gespeicherter State
+      true ->
+        message =
+          cond do
+            is_nil(stored_state) ->
+              "Session verloren (kein State in Session oder Cookie). Bitte direkt https://5songs.com öffnen und erneut versuchen."
+            stored_state != url_state ->
+              "State stimmt nicht überein (CSRF-Schutz). Bitte erneut versuchen."
+            true ->
+              "Unbekannter Fehler bei der Anmeldung."
+          end
+
+        conn
+        |> delete_resp_cookie("spotify_oauth_state", path: "/")
+        |> put_flash(:error, message)
+        |> redirect(to: ~p"/")
     end
   end
 
-  def spotify_callback(conn, _params) do
-    conn
-    |> put_flash(:error, "Missing code from Spotify.")
-    |> redirect(to: ~p"/")
+  defp do_token_exchange(conn, code) do
+    conn = delete_session(conn, :spotify_state)
+    conn = delete_resp_cookie(conn, "spotify_oauth_state", path: "/")
+
+    case Exspotify.Auth.exchange_code_for_token(code) do
+      {:ok, %{"access_token" => access_token, "refresh_token" => refresh_token}} ->
+        Logger.info("OAuth: token exchange successful")
+        conn
+        |> put_session(:spotify_access_token, access_token)
+        |> put_session(:spotify_refresh_token, refresh_token)
+        |> redirect(to: ~p"/")
+
+      {:error, reason} ->
+        Logger.warning("OAuth: token exchange failed: #{inspect(reason)}")
+        conn
+        |> put_flash(:error, "Spotify Login fehlgeschlagen: #{inspect(reason)}")
+        |> redirect(to: ~p"/")
+    end
   end
 end
