@@ -6,7 +6,7 @@ Live unter [5songs.com](https://5songs.com). Die öffentliche Instanz hängt an 
 
 ## Die Idee
 
-[Hitster](https://www.jumbo.eu/de/marken/hitsster) und Hitster Bingo lassen sich nur mit den vorhandenen Extension Packs spielen: den physischen Karten und der offiziellen App. Der Songpool ist damit fest.
+[Hitster](https://hitstergame.com/de-de/) und Hitster Bingo lassen sich nur mit den vorhandenen Extension Packs spielen: den physischen Karten und der offiziellen App. Der Songpool ist damit fest.
 
 5songs macht davon unabhängig. Statt Fertigkarten hängt die App an **Spotify**, du spielst jederzeit **eure Playlists**. Familien-Mix, WG-Chronik, die 200er-Liste vom letzten Urlaub.
 
