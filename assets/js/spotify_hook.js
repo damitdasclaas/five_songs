@@ -53,15 +53,24 @@ const SpotifyPlayerHook = {
         const state = all[playlist_id];
         const played = state?.played_track_ids;
         if (Array.isArray(played) && played.length) {
-          this.pushEvent("restore_state", { played_track_ids: played });
+          this.pushEvent("restore_state", {
+            played_track_ids: played,
+            category_bag: Array.isArray(state?.category_bag) ? state.category_bag : [],
+            last_category_id: state?.last_category_id || null
+          });
         }
       } catch (_) {}
     });
-    this.handleEvent("save_game_state", ({ playlist_id, playlist_name, played_track_ids }) => {
+    this.handleEvent("save_game_state", ({ playlist_id, playlist_name, played_track_ids, category_bag, last_category_id }) => {
       try {
         const raw = localStorage.getItem(GAME_STATE_KEY);
         const all = raw ? JSON.parse(raw) : {};
-        all[playlist_id] = { playlist_name, played_track_ids: played_track_ids || [] };
+        all[playlist_id] = {
+          playlist_name,
+          played_track_ids: played_track_ids || [],
+          category_bag: category_bag || [],
+          last_category_id: last_category_id || null
+        };
         localStorage.setItem(GAME_STATE_KEY, JSON.stringify(all));
         if (playlist_id && (played_track_ids?.length ?? 0) > 0) {
           localStorage.setItem(CURRENT_GAME_KEY, JSON.stringify({ playlist_id, playlist_name }));

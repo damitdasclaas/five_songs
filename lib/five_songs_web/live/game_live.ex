@@ -27,6 +27,8 @@ defmodule FiveSongsWeb.GameLive do
       |> assign(:valid_tracks, [])
       |> assign(:tracks_cache, %{})
       |> assign(:played_track_ids, [])
+      |> assign(:category_bag, [])
+      |> assign(:last_category_id, nil)
       |> assign(:rate_limit_retry_ref, nil)
       |> assign(:rate_limit_blocked_until, nil)
       |> assign(:tracks_loading, false)
@@ -650,6 +652,8 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
       if socket.assigns.running_game do
         socket
         |> assign(:played_track_ids, [])
+        |> assign(:category_bag, [])
+        |> assign(:last_category_id, nil)
         |> assign(:running_game, nil)
         |> push_event("clear_game_state", %{})
       else
@@ -778,15 +782,22 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
 
   # Schritt 1: Kategorie auslosen (später mit Animation). Track wird noch NICHT gewählt.
   def handle_event("next_round", _params, socket) do
-    category = FiveSongs.Categories.pick_random()
+    {category, remaining} =
+      FiveSongs.Categories.pick_next(
+        socket.assigns.category_bag,
+        socket.assigns.last_category_id
+      )
 
     {:noreply,
      socket
      |> assign(:current_category, category)
+     |> assign(:category_bag, remaining)
+     |> assign(:last_category_id, category.id)
      |> assign(:current_track, nil)
      |> assign(:reveal_data, nil)
      |> assign(:show_reveal, false)
-     |> assign(:game_phase, :category_picked)}
+     |> assign(:game_phase, :category_picked)
+     |> persist_game_state()}
   end
 
   # Schritt 2: Song zufällig wählen und Countdown starten
@@ -802,7 +813,6 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
       _ ->
         track = FiveSongs.Tracks.pick_random_track(available)
         new_played = [track.id | played]
-        pl = socket.assigns.selected_playlist
 
         socket =
           socket
@@ -811,11 +821,7 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
           |> assign(:game_phase, :countdown)
           |> assign(:countdown_sec, 3)
           |> assign(:time_left_sec, nil)
-          |> push_event("save_game_state", %{
-            playlist_id: pl.id,
-            playlist_name: pl.name,
-            played_track_ids: new_played
-          })
+          |> persist_game_state()
 
         Process.send_after(self(), :countdown_tick, 1000)
         {:noreply, socket}
@@ -839,9 +845,17 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
     {:noreply, assign(socket, :show_reveal, true)}
   end
 
-  def handle_event("restore_state", %{"played_track_ids" => ids}, socket) do
-    list = if is_list(ids), do: ids, else: []
-    {:noreply, assign(socket, :played_track_ids, list)}
+  def handle_event("restore_state", params, socket) do
+    ids = params |> Map.get("played_track_ids") |> normalize_id_list()
+    bag = params |> Map.get("category_bag") |> normalize_id_list()
+    last_id = params["last_category_id"]
+    last_id = if is_binary(last_id) and last_id != "", do: last_id, else: nil
+
+    {:noreply,
+     socket
+     |> assign(:played_track_ids, ids)
+     |> assign(:category_bag, bag)
+     |> assign(:last_category_id, last_id)}
   end
 
   def handle_event("back_to_playlists", _params, socket) do
@@ -856,6 +870,8 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
       |> assign(:selected_playlist, nil)
       |> assign(:valid_tracks, [])
       |> assign(:played_track_ids, [])
+      |> assign(:category_bag, [])
+      |> assign(:last_category_id, nil)
       |> assign(:tracks_loading, false)
       |> assign(:playlists_error, nil)
       |> assign(:game_started, false)
@@ -885,6 +901,25 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
       {:noreply, socket}
     end
   end
+
+  defp persist_game_state(socket) do
+    case socket.assigns.selected_playlist do
+      %{id: id, name: name} ->
+        push_event(socket, "save_game_state", %{
+          playlist_id: id,
+          playlist_name: name,
+          played_track_ids: socket.assigns.played_track_ids || [],
+          category_bag: socket.assigns.category_bag || [],
+          last_category_id: socket.assigns.last_category_id
+        })
+
+      _ ->
+        socket
+    end
+  end
+
+  defp normalize_id_list(ids) when is_list(ids), do: Enum.filter(ids, &is_binary/1)
+  defp normalize_id_list(_), do: []
 
   defp start_play_timer(socket) do
     duration_sec = socket.assigns.play_duration_sec
