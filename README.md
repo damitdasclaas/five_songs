@@ -6,18 +6,29 @@ Live unter [5songs.com](https://5songs.com). Die öffentliche Instanz hängt an 
 
 ## Die Idee
 
-Klassiker wie [Hitsster](https://www.jumbo.eu/de/marken/hitsster) funktionieren so: Ein Song startet, alle raten Erscheinungsjahr (und oft mehr), wer näher dran ist, gewinnt die Karte. Die Karten sind fertig, du spielst immer denselben Pool.
+[Hitster](https://www.jumbo.eu/de/marken/hitsster) und Hitster Bingo lassen sich nur mit den vorhandenen Extension Packs spielen: den physischen Karten und der offiziellen App. Der Songpool ist damit fest.
 
-5songs dreht das um: Statt Fertigkarten nimmst du **eure Playlists**. Familien-Mix, WG-Chronik, die 200er-Liste vom letzten Urlaub. Die Mechanik bleibt ein Ratespiel im Raum, der Katalog ist eurer.
+5songs macht davon unabhängig. Statt Fertigkarten hängt die App an **Spotify**, du spielst jederzeit **eure Playlists**. Familien-Mix, WG-Chronik, die 200er-Liste vom letzten Urlaub.
 
-Die App ist **kein** vollständiger digitaler Hitsster-Klon (keine Timeline, kein Bingo, keine Punktevergabe). Sie steuert Playback und Auflösung; gewertet wird am Tisch.
+Am Tisch nutzen wir meist die Bingo-Karten des offiziellen Hitster Bingo. Die Original-Timeline-Regeln von Hitster fallen weg: dafür gibt es keine Karten, sobald der Katalog eurer ist.
 
-Nicht von Spotify oder Jumbo/Hitsster betrieben, keine offizielle Verbindung.
+Die App liefert Song, Kategorie und Auflösung. Gewertet wird auf den Bingo-Karten, nicht in der Software.
+
+Nicht von Spotify oder Jumbo/Hitster betrieben, keine offizielle Verbindung.
+
+## Einblick
+
+| Start | Playlist | Auflösen |
+|:---:|:---:|:---:|
+| <img src="docs/screenshots/start.png" width="240" alt="Startmenü mit Spiel starten und Einstellungen" /> | <img src="docs/screenshots/playlist.png" width="240" alt="Eigene Spotify-Playlists auswählen" /> | <img src="docs/screenshots/reveal.png" width="240" alt="Auflösen mit Jahr, Titel und Interpret" /> |
+| Spiel starten | Eigene Playlist wählen | Jahr, Titel, Interpret |
+
+Spielbar sind nur **eigene** Playlists. Öffentliche Listen in Spotify kopieren, dann sind sie deine und können ausgewählt werden.
 
 ## Was die App kann
 
 - **Spotify-Login** und Wiedergabe über die Web Playback SDK oder ein anderes Gerät (Handy, Speaker, Desktop-App).
-- **Eigene Playlists** laden, eine auswählen, spielen. Gefolgte/fremde Playlists erscheinen ggf. in der Liste, lassen sich aber nicht abspielen. In Spotify in eine eigene Playlist kopieren.
+- **Nur eigene Playlists.** Gefolgte oder fremde Listen lassen sich nicht spielen. Eine öffentliche Playlist in Spotify kopieren (neue Playlist anlegen, Songs rüberziehen), dann gehört sie dir und taucht als eigene auf.
 - Pro Playlist bis zu **200 Songs**. Es zählen nur Tracks mit Titel, Interpret und Release-Jahr.
 - **Fünf Kategorien**, im Wechsel (jede einmal, dann neu gemischt; nie dieselbe Kategorie zweimal hintereinander):
   - Genaues Erscheinungsjahr
@@ -30,14 +41,14 @@ Nicht von Spotify oder Jumbo/Hitsster betrieben, keine offizielle Verbindung.
 - **Einstellungen**: Abspielgerät und Spieldauer (30 / 45 / 60 / 75 / 90 Sekunden).
 - Beim Auflösen: Jahr, Titel, Interpret, Cover, Link zu Spotify, Link zum Gegenprüfen des Release-Jahrs.
 
-Was sie bewusst nicht macht: Multiplayer-Räume, Highscores, fremde Playlists, kommerziellen Betrieb.
+Was sie bewusst nicht macht: Multiplayer-Räume, Highscores, fremde Playlists ohne Kopie, kommerziellen Betrieb.
 
 ## So läuft eine Runde
 
 1. Mit Spotify anmelden, Playlist wählen, Spiel starten.
 2. **Nächste Runde:** eine Kategorie wird gezogen und angezeigt.
 3. **Song abspielen:** kurzer Countdown, dann läuft der Track. Die Kategorie bleibt sichtbar, Titel und Interpret nicht.
-4. Alle raten. **Stopp / Auflösen** oder der Timer beendet die Wiedergabe.
+4. Alle raten, bei uns auf den Hitster-Bingo-Karten. **Stopp / Auflösen** oder der Timer beendet die Wiedergabe.
 5. **Auflösen** zeigt Jahr, Titel und Interpret.
 6. Nächste Runde, bis die Playlist durch ist.
 
