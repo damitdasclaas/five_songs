@@ -44,6 +44,10 @@ defmodule FiveSongsWeb.GameLive do
       |> assign(:time_left_sec, nil)
       |> assign(:timer_ref, nil)
       |> assign(:refresh_timer_ref, nil)
+      |> assign(:token_refreshing, false)
+      |> assign(:pending_after_refresh, nil)
+      |> assign(:last_token_refresh_at, nil)
+      |> assign(:spotify_token_expires_at, session["spotify_token_expires_at"])
       |> assign(:play_duration_sec, play_duration_sec)
       |> assign(:countdown_sec, nil)
       |> assign(:show_reveal, false)
@@ -51,8 +55,17 @@ defmodule FiveSongsWeb.GameLive do
       |> then(&compute_phase/1)
 
     socket =
-      if socket.assigns.phase == :choose_playlist and token do
-        schedule_token_refresh(socket) |> push_event("check_running_game", %{})
+      if connected?(socket) and token do
+        socket
+        |> push_event("token_updated", %{token: token})
+        |> then(fn socket ->
+          if socket.assigns.phase == :choose_playlist do
+            push_event(socket, "check_running_game", %{})
+          else
+            socket
+          end
+        end)
+        |> start_token_refresh_cycle()
       else
         socket
       end
@@ -486,7 +499,7 @@ defmodule FiveSongsWeb.GameLive do
          |> push_event("cache_playlists", %{playlists: cache})}
       else
         {:error, %Exspotify.Error{type: :unauthorized}} ->
-          {:noreply, redirect(socket, to: ~p"/auth/spotify/refresh")}
+          {:noreply, handle_unauthorized(socket, :load_playlists)}
         {:error, %Exspotify.Error{type: :rate_limited, details: details}} ->
           {:noreply,
            socket
@@ -517,7 +530,6 @@ defmodule FiveSongsWeb.GameLive do
        |> assign(:year_range, cached[:year_range])
        |> assign(:playlists_error, nil)
        |> assign(:tracks_loading, false)
-       |> cancel_refresh_timer()
        |> compute_phase()
        |> push_event("request_saved_state", %{playlist_id: playlist_id})}
     else
@@ -547,12 +559,11 @@ defmodule FiveSongsWeb.GameLive do
            |> assign(:tracks_cache, new_cache)
            |> assign(:playlists_error, nil)
            |> assign(:tracks_loading, false)
-           |> cancel_refresh_timer()
            |> compute_phase()
            |> push_event("request_saved_state", %{playlist_id: playlist_id})}
 
         {:error, %Exspotify.Error{type: :unauthorized}} ->
-          {:noreply, redirect(socket, to: ~p"/auth/spotify/refresh")}
+          {:noreply, handle_unauthorized(socket, {:load_playlist_tracks, playlist_id})}
 
         {:error, %Exspotify.Error{type: :forbidden}} ->
           {:noreply,
@@ -605,12 +616,8 @@ defmodule FiveSongsWeb.GameLive do
     end
   end
 
-  def handle_info(:refresh_token_redirect, socket) do
-    if socket.assigns[:spotify_refresh_token] do
-      {:noreply, redirect(socket, to: ~p"/auth/spotify/refresh")}
-    else
-      {:noreply, socket}
-    end
+  def handle_info(:silent_token_refresh, socket) do
+    {:noreply, request_silent_refresh(socket)}
   end
 
   def handle_info(:playback_started_timeout, socket) do
@@ -701,7 +708,6 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
      |> assign(:selected_playlist, nil)
      |> assign(:playlists_loading, false)
      |> assign(:playlists_error, nil)
-     |> cancel_refresh_timer()
      |> cancel_rate_limit_retry()
      |> push_event("check_running_game", %{})}
   end
@@ -845,6 +851,33 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
     {:noreply, assign(socket, :show_reveal, true)}
   end
 
+  def handle_event("token_refreshed", params, socket) do
+    token = params["access_token"]
+
+    if is_binary(token) and token != "" do
+      pending = socket.assigns.pending_after_refresh
+      expires_in = FiveSongs.SpotifyTokens.parse_expires_in(params["expires_in"])
+
+      socket =
+        socket
+        |> assign(:spotify_token, token)
+        |> assign(:spotify_token_expires_at, System.system_time(:second) + expires_in)
+        |> assign(:token_refreshing, false)
+        |> assign(:pending_after_refresh, nil)
+        |> assign(:last_token_refresh_at, System.system_time(:second))
+        |> schedule_token_refresh()
+
+      if pending, do: send(self(), pending)
+      {:noreply, socket}
+    else
+      {:noreply, redirect(socket, to: ~p"/auth/logout")}
+    end
+  end
+
+  def handle_event("token_refresh_failed", _params, socket) do
+    {:noreply, redirect(socket, to: ~p"/auth/logout")}
+  end
+
   def handle_event("restore_state", params, socket) do
     ids = params |> Map.get("played_track_ids") |> normalize_id_list()
     bag = params |> Map.get("category_bag") |> normalize_id_list()
@@ -865,7 +898,6 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
       socket
       |> cancel_timer()
       |> cancel_playback_started_timeout()
-      |> cancel_refresh_timer()
       |> cancel_rate_limit_retry()
       |> assign(:selected_playlist, nil)
       |> assign(:valid_tracks, [])
@@ -885,7 +917,6 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
       |> assign(:timer_ref, nil)
       |> assign(:countdown_sec, nil)
       |> compute_phase()
-      |> schedule_token_refresh()
 
     socket = if was_playing, do: push_event(socket, "pause_track", pause_payload(socket)), else: socket
 
@@ -950,20 +981,55 @@ payload = if id = socket.assigns[:spotify_device_id], do: Map.put(payload, :devi
     assign(socket, :playback_started_timeout_ref, nil)
   end
 
-  # Token läuft nach ~1h ab; nach 45 min zur Refresh-Route schicken (nur auf Playlist-Bildschirm)
+  # Access-Token ~1h gültig. Stiller Refresh 15 Min vorher, auch während einer laufenden Runde.
+  defp start_token_refresh_cycle(socket) do
+    cond do
+      is_nil(socket.assigns.spotify_refresh_token) ->
+        socket
+
+      FiveSongs.SpotifyTokens.refresh_soon?(socket.assigns.spotify_token_expires_at) ->
+        request_silent_refresh(socket)
+
+      true ->
+        schedule_token_refresh(socket)
+    end
+  end
+
   defp schedule_token_refresh(socket) do
     if ref = socket.assigns[:refresh_timer_ref] do
       Process.cancel_timer(ref)
     end
-    ref = Process.send_after(self(), :refresh_token_redirect, 45 * 60 * 1000)
+
+    delay = FiveSongs.SpotifyTokens.refresh_in_ms(socket.assigns.spotify_token_expires_at)
+    ref = Process.send_after(self(), :silent_token_refresh, delay)
     assign(socket, :refresh_timer_ref, ref)
   end
 
-  defp cancel_refresh_timer(socket) do
-    if ref = socket.assigns[:refresh_timer_ref] do
-      Process.cancel_timer(ref)
+  defp handle_unauthorized(socket, pending) do
+    recently = socket.assigns.last_token_refresh_at
+    now = System.system_time(:second)
+
+    if is_integer(recently) and now - recently < 30 do
+      redirect(socket, to: ~p"/auth/logout")
+    else
+      request_silent_refresh(socket, pending)
     end
-    assign(socket, :refresh_timer_ref, nil)
+  end
+
+  defp request_silent_refresh(socket, pending \\ nil) do
+    cond do
+      is_nil(socket.assigns.spotify_refresh_token) ->
+        redirect(socket, to: ~p"/")
+
+      socket.assigns.token_refreshing ->
+        if pending, do: assign(socket, :pending_after_refresh, pending), else: socket
+
+      true ->
+        socket
+        |> assign(:token_refreshing, true)
+        |> assign(:pending_after_refresh, pending || socket.assigns.pending_after_refresh)
+        |> push_event("silent_token_refresh", %{})
+    end
   end
 
   defp rate_limit_message(%{retry_after: seconds}) when is_integer(seconds) and seconds > 0 do

@@ -20,6 +20,12 @@ const SpotifyPlayerHook = {
         this.ensurePlayerThenPlay(token);
       }
     });
+    this.handleEvent("token_updated", ({ token }) => {
+      if (token) this.lastToken = token;
+    });
+    this.handleEvent("silent_token_refresh", () => {
+      this.refreshAccessToken();
+    });
     this.handleEvent("pause_track", (payload) => {
       if (!this.isPlaying) return;
       this.isPlaying = false;
@@ -118,6 +124,38 @@ const SpotifyPlayerHook = {
     } catch (_) {}
   },
 
+  refreshAccessToken() {
+    if (this._refreshing) return;
+    this._refreshing = true;
+    fetch("/auth/spotify/refresh?silent=1", {
+      headers: { "X-Requested-With": "XMLHttpRequest" },
+      credentials: "same-origin"
+    })
+      .then((resp) => {
+        if (!resp.ok) throw new Error("refresh failed");
+        return resp.json();
+      })
+      .then((data) => {
+        if (!data?.access_token) throw new Error("no token");
+        this.lastToken = data.access_token;
+        this.pushEvent("token_refreshed", {
+          access_token: data.access_token,
+          expires_in: data.expires_in
+        });
+        if (this._retryPlayAfterRefresh) {
+          const pending = this._retryPlayAfterRefresh;
+          this._retryPlayAfterRefresh = null;
+          this.playUri(pending.uri, this.lastToken, pending.device_id);
+        }
+      })
+      .catch(() => {
+        this.pushEvent("token_refresh_failed", {});
+      })
+      .finally(() => {
+        this._refreshing = false;
+      });
+  },
+
   ensurePlayerThenPlay(token) {
     if (this.player && this.deviceId) {
       this.playUri(this.pendingPlay.uri, this.pendingPlay.token, this.deviceId);
@@ -136,9 +174,10 @@ const SpotifyPlayerHook = {
   },
 
   initPlayer(token) {
+    if (token) this.lastToken = token;
     this.player = new window.Spotify.Player({
       name: "5songs (Browser)",
-      getOAuthToken: (cb) => cb(token),
+      getOAuthToken: (cb) => cb(this.lastToken || token),
       volume: 1
     });
     this.player.addListener("ready", ({ device_id }) => {
@@ -167,6 +206,15 @@ const SpotifyPlayerHook = {
         "Content-Type": "application/json"
       }
     }).then((resp) => {
+      if (resp.status === 401) {
+        this.isPlaying = false;
+        if (this._playRetryAfterRefresh) return;
+        this._playRetryAfterRefresh = true;
+        this._retryPlayAfterRefresh = { uri, device_id: targetId };
+        this.refreshAccessToken();
+        return;
+      }
+      this._playRetryAfterRefresh = false;
       if (resp.status === 429) {
         this.isPlaying = false;
         return;

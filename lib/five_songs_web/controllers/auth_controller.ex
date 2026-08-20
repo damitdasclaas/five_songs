@@ -2,37 +2,79 @@ defmodule FiveSongsWeb.AuthController do
   use FiveSongsWeb, :controller
   require Logger
 
-  def refresh(conn, _params) do
+  def refresh(conn, params) do
+    silent? = silent_refresh?(conn, params)
+
     case get_session(conn, :spotify_refresh_token) do
       nil ->
-        conn
-        |> put_flash(:error, "Nicht angemeldet.")
-        |> redirect(to: ~p"/")
+        refresh_missing(conn, silent?)
 
       refresh_token ->
         case Exspotify.Auth.refresh_access_token(refresh_token) do
           {:ok, %{"access_token" => access_token} = body} ->
-            conn
-            |> put_session(:spotify_access_token, access_token)
-            |> maybe_put_refresh_token(body)
-            |> put_flash(:info, "Token erneuert. Bitte Playlist erneut wählen.")
-            |> redirect(to: ~p"/")
+            conn = put_spotify_tokens(conn, body)
 
-          {:error, _} ->
-            conn
-            |> put_flash(:error, "Token konnte nicht erneuert werden. Bitte erneut anmelden.")
-            |> redirect(to: ~p"/auth/logout")
+            if silent? do
+              json(conn, %{
+                access_token: access_token,
+                expires_in: FiveSongs.SpotifyTokens.expires_in(body)
+              })
+            else
+              redirect(conn, to: ~p"/")
+            end
+
+          {:error, reason} ->
+            Logger.warning("Spotify token refresh failed: #{inspect(reason)}")
+            refresh_failed(conn, silent?)
         end
     end
   end
 
-  defp maybe_put_refresh_token(conn, %{"refresh_token" => rt}), do: put_session(conn, :spotify_refresh_token, rt)
+  defp silent_refresh?(_conn, params) do
+    params["silent"] == "1"
+  end
+
+  defp refresh_missing(conn, true) do
+    conn
+    |> put_status(:unauthorized)
+    |> json(%{error: "not_logged_in"})
+  end
+
+  defp refresh_missing(conn, false) do
+    conn
+    |> put_flash(:error, "Nicht angemeldet.")
+    |> redirect(to: ~p"/")
+  end
+
+  defp refresh_failed(conn, true) do
+    conn
+    |> put_status(:unauthorized)
+    |> json(%{error: "refresh_failed"})
+  end
+
+  defp refresh_failed(conn, false) do
+    conn
+    |> put_flash(:error, "Token konnte nicht erneuert werden. Bitte erneut anmelden.")
+    |> redirect(to: ~p"/auth/logout")
+  end
+
+  defp put_spotify_tokens(conn, %{"access_token" => access_token} = body) do
+    conn
+    |> put_session(:spotify_access_token, access_token)
+    |> put_session(:spotify_token_expires_at, FiveSongs.SpotifyTokens.expires_at(body))
+    |> maybe_put_refresh_token(body)
+  end
+
+  defp maybe_put_refresh_token(conn, %{"refresh_token" => rt}) when is_binary(rt) and rt != "",
+    do: put_session(conn, :spotify_refresh_token, rt)
+
   defp maybe_put_refresh_token(conn, _), do: conn
 
   def logout(conn, _params) do
     conn
     |> delete_session(:spotify_access_token)
     |> delete_session(:spotify_refresh_token)
+    |> delete_session(:spotify_token_expires_at)
     |> delete_session(:spotify_state)
     |> put_flash(:info, "Abgemeldet.")
     |> redirect(to: ~p"/")
@@ -43,6 +85,7 @@ defmodule FiveSongsWeb.AuthController do
     conn
     |> delete_session(:spotify_access_token)
     |> delete_session(:spotify_refresh_token)
+    |> delete_session(:spotify_token_expires_at)
     |> delete_session(:spotify_state)
     |> put_flash(:info, "Bitte erneut bei Spotify anmelden.")
     |> redirect(to: ~p"/auth/spotify")
@@ -145,11 +188,13 @@ defmodule FiveSongsWeb.AuthController do
     conn = delete_resp_cookie(conn, "spotify_oauth_state", path: "/")
 
     case Exspotify.Auth.exchange_code_for_token(code) do
-      {:ok, %{"access_token" => access_token, "refresh_token" => refresh_token}} ->
+      {:ok, %{"access_token" => access_token, "refresh_token" => refresh_token} = body}
+      when is_binary(access_token) and is_binary(refresh_token) ->
         Logger.info("OAuth: token exchange successful")
+
         conn
-        |> put_session(:spotify_access_token, access_token)
         |> put_session(:spotify_refresh_token, refresh_token)
+        |> put_spotify_tokens(body)
         |> redirect(to: ~p"/")
 
       {:error, reason} ->

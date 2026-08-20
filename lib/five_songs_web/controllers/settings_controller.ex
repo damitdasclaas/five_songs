@@ -40,7 +40,7 @@ defmodule FiveSongsWeb.SettingsController do
           |> redirect(to: ~p"/settings")
 
         {:error, %Exspotify.Error{type: :unauthorized}} ->
-          redirect(conn, to: ~p"/auth/spotify/reauth")
+          redirect(conn, to: ~p"/auth/spotify/refresh")
 
         _ ->
           conn

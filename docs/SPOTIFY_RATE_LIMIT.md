@@ -32,7 +32,7 @@ Spotify begrenzt die Anzahl der API-Aufrufe. Wenn du zu oft an die Grenze kommst
    Jeder Klick = erneut 2 (Playlists) bzw. 1–4 (Tracks) Requests. Nur bei echten Fehlern nutzen.
 
 4. **Token-Refresh**  
-   Pro Refresh 1 Request; sinnvoll nur bei Ablauf. Den 45-Min-Proaktiv-Refresh haben wir drin – das verhindert viele 401 und damit doppelte Versuche.
+   Pro Refresh 1 Request an den Token-Endpoint. Der Access-Token wird still im Hintergrund erneuert (ca. 15 Min vor Ablauf, auch während einer Runde) – ohne Redirect und ohne erneutes Spotify-Login.
 
 5. **Development / Tests**  
    Häufiges Neuladen der App oder Wechseln zwischen Playlists in kurzer Zeit = viele Requests. In der Produktion mit echten Nutzern ist die Last meist geringer.
